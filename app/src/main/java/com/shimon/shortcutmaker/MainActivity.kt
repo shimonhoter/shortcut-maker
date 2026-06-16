@@ -22,7 +22,8 @@ import com.shimon.shortcutmaker.data.TaskType
 import com.shimon.shortcutmaker.receiver.SchedulerReceiver
 import com.shimon.shortcutmaker.shortcuts.ShortcutCreator
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -240,7 +241,7 @@ class MainActivity : ComponentActivity() {
 
     // ── Extension ─────────────────────────────────────────────────────────────
     private suspend fun <T> kotlinx.coroutines.flow.Flow<T>.firstValue(): T =
-        kotlinx.coroutines.flow.first()
+        take(1).toList()[0]
 
     private fun ShortcutConfig.toJson() = JSONObject().apply {
         put("id", id); put("label", label)
