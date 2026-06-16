@@ -25,199 +25,183 @@ fun LocationPickerDialog(
     onDismiss: () -> Unit,
     onLocationPicked: (PickedLocation) -> Unit,
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var pickedLat   by remember { mutableStateOf<Double?>(null) }
-    var pickedLng   by remember { mutableStateOf<Double?>(null) }
-    var pickedLabel by remember { mutableStateOf("") }
-    var webViewRef  by remember { mutableStateOf<WebView?>(null) }
-    var isSearching by remember { mutableStateOf(false) }
+    var searchQuery  by remember { mutableStateOf("") }
+    var pickedLat    by remember { mutableStateOf<Double?>(null) }
+    var pickedLng    by remember { mutableStateOf<Double?>(null) }
+    var pickedLabel  by remember { mutableStateOf("") }
+    var webViewRef   by remember { mutableStateOf<WebView?>(null) }
+    var isSearching  by remember { mutableStateOf(false) }
+    var searchResult by remember { mutableStateOf("") }
 
-    // HTML map page using Leaflet (OpenStreetMap) – no API key needed
     val mapHtml = """
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  body { margin:0; padding:0; }
-  #map { width:100vw; height:100vh; }
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body,#map { width:100%; height:100%; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-  var map = L.map('map').setView([31.7683, 35.2137], 8);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-  }).addTo(map);
-
-  var marker = null;
-
-  map.on('click', function(e) {
-    var lat = e.latlng.lat.toFixed(6);
-    var lng = e.latlng.lng.toFixed(6);
-    if (marker) marker.remove();
-    marker = L.marker([lat, lng]).addTo(map);
-    // Call Android interface
-    Android.onLocationPicked(parseFloat(lat), parseFloat(lng));
-  });
-
-  function jumpTo(lat, lng, label) {
-    map.setView([lat, lng], 15);
-    if (marker) marker.remove();
-    marker = L.marker([lat, lng]).addTo(map).bindPopup(label).openPopup();
-    Android.onLocationPicked(lat, lng);
-  }
+var map = L.map('map',{zoomControl:true}).setView([31.7683,35.2137],8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© OSM',maxZoom:19
+}).addTo(map);
+var marker=null;
+function setMarker(lat,lng){
+  if(marker) marker.remove();
+  marker=L.marker([lat,lng]).addTo(map);
+}
+map.on('click',function(e){
+  var lat=Math.round(e.latlng.lat*1e6)/1e6;
+  var lng=Math.round(e.latlng.lng*1e6)/1e6;
+  setMarker(lat,lng);
+  Android.onPick(lat,lng,''+lat+', '+lng);
+});
+function jumpTo(lat,lng,label){
+  map.setView([lat,lng],15);
+  setMarker(lat,lng);
+  Android.onPick(lat,lng,label);
+}
 </script>
 </body>
 </html>
-    """.trimIndent()
+""".trimIndent()
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.9f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("בחר מיקום במפה", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("בחר מיקום", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(8.dp))
 
-                // ── Search bar ──────────────────────────────────────────────
+                // ── חיפוש כתובת ──────────────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("חיפוש כתובת...") },
+                        placeholder = { Text("חפש כתובת...") },
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            if (searchQuery.isNotBlank()) {
-                                isSearching = true
-                                searchAddress(searchQuery, webViewRef) { label ->
-                                    isSearching = false
-                                    if (label != null) pickedLabel = label
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(onClick = {
+                        if (searchQuery.isNotBlank()) {
+                            isSearching = true
+                            searchResult = ""
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    val enc = java.net.URLEncoder.encode(searchQuery, "UTF-8")
+                                    val url = "https://nominatim.openstreetmap.org/search?q=$enc&format=json&limit=1"
+                                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                                    conn.setRequestProperty("User-Agent", "ShortcutMaker/1.0")
+                                    conn.connectTimeout = 8000; conn.readTimeout = 8000
+                                    val resp = conn.inputStream.bufferedReader().readText()
+                                    conn.disconnect()
+                                    val arr = org.json.JSONArray(resp)
+                                    withContext(Dispatchers.Main) {
+                                        isSearching = false
+                                        if (arr.length() > 0) {
+                                            val o = arr.getJSONObject(0)
+                                            val lat = o.getDouble("lat")
+                                            val lng = o.getDouble("lon")
+                                            val lbl = o.getString("display_name").split(",").take(2).joinToString(", ")
+                                            searchResult = lbl
+                                            webViewRef?.evaluateJavascript("jumpTo($lat,$lng,'${lbl.replace("'","")}')", null)
+                                        } else {
+                                            searchResult = "לא נמצא"
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { isSearching = false; searchResult = "שגיאת חיפוש" }
                                 }
                             }
                         }
-                    ) {
-                        if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.Search, "חיפוש")
-                        }
+                    }) {
+                        if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Search, "חיפוש")
                     }
+                }
+
+                if (searchResult.isNotBlank()) {
+                    Text(searchResult, fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Spacer(Modifier.height(8.dp))
 
-                // ── Map WebView ─────────────────────────────────────────────
+                // ── מפה ──────────────────────────────────────────────────────
                 Box(modifier = Modifier.weight(1f)) {
                     AndroidView(
                         factory = { ctx ->
-                            WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                webViewClient = WebViewClient()
-                                addJavascriptInterface(object : Any() {
+                            WebView(ctx).also { wv ->
+                                wv.settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    userAgentString = "Mozilla/5.0 (Android) ShortcutMaker"
+                                }
+                                wv.webViewClient = object : WebViewClient() {
+                                    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                                        // ignore tile errors
+                                    }
+                                }
+                                wv.webChromeClient = WebChromeClient()
+                                wv.addJavascriptInterface(object : Any() {
                                     @JavascriptInterface
-                                    fun onLocationPicked(lat: Double, lng: Double) {
+                                    fun onPick(lat: Double, lng: Double, label: String) {
                                         pickedLat = lat
                                         pickedLng = lng
-                                        if (pickedLabel.isBlank()) {
-                                            pickedLabel = "%.4f, %.4f".format(lat, lng)
-                                        }
+                                        pickedLabel = label
                                     }
                                 }, "Android")
-                                loadDataWithBaseURL(
-                                    "https://openstreetmap.org",
-                                    mapHtml, "text/html", "utf-8", null
+                                wv.loadDataWithBaseURL(
+                                    "https://openstreetmap.org", mapHtml,
+                                    "text/html", "utf-8", null
                                 )
-                                webViewRef = this
+                                webViewRef = wv
                             }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
 
-                // ── Picked location display ─────────────────────────────────
+                // ── מיקום נבחר ────────────────────────────────────────────────
                 if (pickedLat != null) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        "📍 ${"%.4f".format(pickedLat)}, ${"%.4f".format(pickedLng)}",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        "📍 ${"%.5f".format(pickedLat)}, ${"%.5f".format(pickedLng)}",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.primary
                     )
                 }
 
                 Spacer(Modifier.height(8.dp))
 
-                // ── Buttons ─────────────────────────────────────────────────
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("ביטול")
-                    }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("ביטול") }
                     Button(
                         onClick = {
-                            val lat = pickedLat ?: return@Button
-                            val lng = pickedLng ?: return@Button
-                            onLocationPicked(PickedLocation(lat, lng,
-                                pickedLabel.ifBlank { searchQuery }))
+                            onLocationPicked(PickedLocation(
+                                pickedLat ?: 0.0,
+                                pickedLng ?: 0.0,
+                                pickedLabel.ifBlank { searchQuery }
+                            ))
                         },
                         modifier = Modifier.weight(1f),
                         enabled = pickedLat != null
-                    ) {
-                        Text("אישור")
-                    }
+                    ) { Text("אישור") }
                 }
             }
-        }
-    }
-}
-
-/**
- * Geocode address via Nominatim (OpenStreetMap) – no API key.
- * On success calls jumpTo() in the WebView JS.
- */
-private fun searchAddress(
-    query: String,
-    webView: WebView?,
-    onResult: (String?) -> Unit,
-) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-            val url = "https://nominatim.openstreetmap.org/search?q=$encoded&format=json&limit=1"
-            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.setRequestProperty("User-Agent", "ShortcutMaker/1.0")
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-            val response = conn.inputStream.bufferedReader().readText()
-            conn.disconnect()
-
-            val arr = org.json.JSONArray(response)
-            if (arr.length() > 0) {
-                val obj   = arr.getJSONObject(0)
-                val lat   = obj.getDouble("lat")
-                val lng   = obj.getDouble("lon")
-                val label = obj.getString("display_name").split(",").take(2).joinToString(", ")
-                withContext(Dispatchers.Main) {
-                    webView?.evaluateJavascript("jumpTo($lat, $lng, '$label')", null)
-                    onResult(label)
-                }
-            } else {
-                withContext(Dispatchers.Main) { onResult(null) }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) { onResult(null) }
         }
     }
 }
