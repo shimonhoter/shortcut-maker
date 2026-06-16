@@ -91,6 +91,9 @@ dependencies {
     // Shortcuts compat
     implementation("androidx.core:core-google-shortcuts:1.1.0")
 
+    // Permissions
+    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+
     // Debug tools
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
