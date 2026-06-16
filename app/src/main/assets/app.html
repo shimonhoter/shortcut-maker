@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="leaflet.css"/>
+<script src="leaflet.js"></script>
+<style>
+:root {
+  --bg:       #0D1B2A;
+  --surface:  #1B2E45;
+  --surface2: #243B55;
+  --primary:  #4DD0E1;
+  --accent:   #FFCA28;
+  --text:     #E8EFF7;
+  --muted:    #8899AA;
+  --error:    #EF5350;
+  --radius:   12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:15px;overflow:hidden}
+
+/* ── SCREENS ── */
+.screen{display:none;flex-direction:column;height:100%;overflow:hidden}
+.screen.active{display:flex}
+
+/* ── TOPBAR ── */
+.topbar{background:var(--surface);padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;border-bottom:1px solid var(--surface2)}
+.topbar h1{font-size:18px;font-weight:700;color:var(--primary);flex:1}
+.back-btn{background:none;border:none;color:var(--primary);font-size:22px;cursor:pointer;padding:4px}
+
+/* ── TABS ── */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--surface2);flex-shrink:0}
+.tab{flex:1;padding:12px;text-align:center;cursor:pointer;color:var(--muted);font-size:13px;border-bottom:3px solid transparent;transition:.2s}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* ── CONTENT ── */
+.content{flex:1;overflow-y:auto;padding:12px}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.card-icon{width:44px;height:44px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.card-body{flex:1;min-width:0}
+.card-title{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-sub{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-actions{display:flex;gap:6px;flex-shrink:0}
+.icon-btn{background:none;border:none;cursor:pointer;font-size:18px;padding:4px;border-radius:6px}
+
+/* ── FAB ── */
+.fab{position:fixed;bottom:20px;left:20px;width:56px;height:56px;border-radius:50%;background:var(--primary);border:none;font-size:28px;color:var(--bg);cursor:pointer;box-shadow:0 4px 16px rgba(77,208,225,.4);z-index:100;display:flex;align-items:center;justify-content:center}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-icon{font-size:56px;margin-bottom:16px}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--surface2);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-title{font-size:17px;font-weight:700}
+.modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer}
+.modal-body{flex:1;overflow-y:auto;padding:16px 20px}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--surface2);display:flex;gap:10px;flex-shrink:0}
+
+/* ── FORM ── */
+.field{margin-bottom:14px}
+.field label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
+.field input,.field textarea,.field select{width:100%;background:var(--surface2);border:1px solid #334;border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;outline:none}
+.field input:focus,.field textarea:focus{border-color:var(--primary)}
+.field textarea{resize:none;height:80px}
+
+/* ── PICKER FIELD ── */
+.picker-field{background:var(--surface2);border:1px solid #334;border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;min-height:46px}
+.picker-field:active{border-color:var(--primary)}
+.picker-field .pf-icon{font-size:18px;flex-shrink:0}
+.picker-field .pf-val{flex:1;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.picker-field .pf-val.placeholder{color:var(--muted)}
+.picker-field .pf-arrow{color:var(--muted);font-size:12px}
+
+/* ── SELECT PILLS ── */
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+.pill{padding:6px 14px;border-radius:20px;border:1.5px solid var(--surface2);cursor:pointer;font-size:13px;transition:.15s;background:var(--surface2)}
+.pill.selected{border-color:var(--primary);background:rgba(77,208,225,.15);color:var(--primary)}
+
+/* ── DAYS ── */
+.days{display:flex;gap:5px}
+.day{flex:1;text-align:center;padding:8px 0;border-radius:8px;border:1.5px solid var(--surface2);cursor:pointer;font-size:12px;background:var(--surface2)}
+.day.on{border-color:var(--primary);color:var(--primary);background:rgba(77,208,225,.12)}
+
+/* ── SEARCH ── */
+.search-row{display:flex;gap:8px;margin-bottom:10px}
+.search-row input{flex:1;background:var(--surface2);border:1px solid #334;border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;outline:none}
+.search-row input:focus{border-color:var(--primary)}
+.search-btn{background:var(--primary);border:none;border-radius:8px;padding:0 16px;color:var(--bg);font-size:18px;cursor:pointer;flex-shrink:0}
+
+/* ── LIST ITEMS ── */
+.list-item{padding:12px 4px;border-bottom:1px solid var(--surface2);cursor:pointer;display:flex;align-items:center;gap:10px}
+.list-item:active{background:var(--surface2)}
+.li-main{font-size:14px;font-weight:500}
+.li-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ── MAP ── */
+#map{width:100%;height:100%}
+.map-screen-inner{flex:1;position:relative;overflow:hidden}
+#map-hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;z-index:500;pointer-events:none;white-space:nowrap}
+
+/* ── BUTTONS ── */
+.btn{padding:12px;border-radius:10px;border:none;font-size:15px;font-weight:600;cursor:pointer;flex:1;text-align:center}
+.btn-primary{background:var(--primary);color:var(--bg)}
+.btn-outline{background:transparent;border:1.5px solid var(--surface2);color:var(--text)}
+.btn-primary:active{opacity:.85}
+
+/* ── SWITCH ── */
+.switch-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0}
+.switch{width:44px;height:24px;border-radius:12px;background:#334;position:relative;cursor:pointer;transition:.2s;flex-shrink:0}
+.switch.on{background:var(--primary)}
+.switch::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
+.switch.on::after{left:23px}
+
+/* ── TIME PICKER ── */
+.time-row{display:flex;gap:10px;align-items:center;justify-content:center}
+.time-spinner{display:flex;flex-direction:column;align-items:center;gap:6px}
+.time-val{font-size:36px;font-weight:700;color:var(--primary);background:var(--surface2);border-radius:10px;padding:8px 20px;width:80px;text-align:center}
+.time-btn{background:var(--surface2);border:none;border-radius:8px;color:var(--text);font-size:20px;cursor:pointer;padding:4px 16px}
+.time-sep{font-size:32px;color:var(--muted);font-weight:300}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ MAIN SCREEN ══════════════ -->
+<div id="screen-main" class="screen active">
+  <div class="topbar">
+    <h1>⚡ ShortcutMaker</h1>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('shortcuts')">⚡ קיצורי דרך</div>
+    <div class="tab" onclick="switchTab('tasks')">⏰ תזמון</div>
+  </div>
+  <div class="content" id="list-shortcuts"></div>
+  <div class="content" id="list-tasks" style="display:none"></div>
+  <button class="fab" onclick="openAddModal()">+</button>
+</div>
+
+<!-- ══════════════ MAP SCREEN ══════════════ -->
+<div id="screen-map" class="screen">
+  <div class="topbar">
+    <button class="back-btn" onclick="closeMap()">←</button>
+    <h1>בחר מיקום</h1>
+  </div>
+  <div class="search-row" style="padding:10px 12px;flex-shrink:0">
+    <input type="text" id="map-search-input" placeholder="חפש כתובת..." onkeydown="if(event.key==='Enter')searchMap()"/>
+    <button class="search-btn" onclick="searchMap()">🔍</button>
+  </div>
+  <div class="map-screen-inner">
+    <div id="map"></div>
+    <div id="map-hint">לחץ על המפה לדקירת נקודה</div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-outline" onclick="closeMap()">ביטול</button>
+    <button class="btn btn-primary" id="map-confirm-btn" onclick="confirmLocation()" disabled>אישור</button>
+  </div>
+</div>
+
+<!-- ══════════════ SHORTCUT MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-shortcut">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="shortcut-modal-title">קיצור דרך חדש</span>
+      <button class="modal-close" onclick="closeModal('modal-shortcut')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>שם קיצור הדרך</label>
+        <input type="text" id="sc-label" placeholder="הכנס שם..."/>
+      </div>
+      <div class="field">
+        <label>סוג פעולה</label>
+        <div class="pills" id="sc-type-pills">
+          <div class="pill selected" data-val="DIAL" onclick="selectPill(this,'sc-type-pills')">📞 חיוג</div>
+          <div class="pill" data-val="SMS" onclick="selectPill(this,'sc-type-pills')">✉️ SMS</div>
+          <div class="pill" data-val="MAPS" onclick="selectPill(this,'sc-type-pills')">🗺 מפות</div>
+          <div class="pill" data-val="WAZE" onclick="selectPill(this,'sc-type-pills')">🚗 Waze</div>
+          <div class="pill" data-val="URL" onclick="selectPill(this,'sc-type-pills')">🌐 URL</div>
+          <div class="pill" data-val="APP" onclick="selectPill(this,'sc-type-pills')">📱 אפליקציה</div>
+        </div>
+      </div>
+
+      <!-- DIAL / SMS -->
+      <div id="sc-phone-section">
+        <div class="field">
+          <label>איש קשר / טלפון</label>
+          <div class="picker-field" onclick="openContactPicker('sc')">
+            <span class="pf-icon">👤</span>
+            <span class="pf-val placeholder" id="sc-contact-display">בחר איש קשר</span>
+            <span class="pf-arrow">›</span>
+          </div>
+          <input type="hidden" id="sc-phone"/>
+        </div>
+        <div class="field" id="sc-sms-body-field" style="display:none">
+          <label>תוכן ההודעה</label>
+          <textarea id="sc-sms-body" placeholder="הכנס הודעה..."></textarea>
+        </div>
+      </div>
+
+      <!-- MAPS / WAZE -->
+      <div id="sc-location-section" style="display:none">
+        <div class="field">
+          <label>יעד</label>
+          <div class="picker-field" onclick="openMapScreen('sc')">
+            <span class="pf-icon">📍</span>
+            <span class="pf-val placeholder" id="sc-location-display">בחר מיקום במפה</span>
+            <span class="pf-arrow">›</span>
+          </div>
+          <input type="hidden" id="sc-lat"/>
+          <input type="hidden" id="sc-lng"/>
+        </div>
+      </div>
+
+      <!-- URL -->
+      <div id="sc-url-section" style="display:none">
+        <div class="field">
+          <label>כתובת URL</label>
+          <input type="url" id="sc-url" placeholder="https://"/>
+        </div>
+      </div>
+
+      <!-- APP -->
+      <div id="sc-app-section" style="display:none">
+        <div class="field">
+          <label>אפליקציה</label>
+          <div class="picker-field" onclick="openAppPicker('sc')">
+            <span class="pf-icon">📱</span>
+            <span class="pf-val placeholder" id="sc-app-display">בחר אפליקציה</span>
+            <span class="pf-arrow">›</span>
+          </div>
+          <input type="hidden" id="sc-package"/>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-shortcut')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveShortcut()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TASK MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-task">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="task-modal-title">משימה מתוזמנת</span>
+      <button class="modal-close" onclick="closeModal('modal-task')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>שם המשימה</label>
+        <input type="text" id="task-label" placeholder="הכנס שם..."/>
+      </div>
+      <div class="field">
+        <label>סוג</label>
+        <div class="pills" id="task-type-pills">
+          <div class="pill selected" data-val="SMS" onclick="selectPill(this,'task-type-pills')">✉️ SMS</div>
+          <div class="pill" data-val="WA_MSG" onclick="selectPill(this,'task-type-pills')">💬 WhatsApp</div>
+          <div class="pill" data-val="WA_LOC" onclick="selectPill(this,'task-type-pills')">📍 מיקום WA</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>איש קשר</label>
+        <div class="picker-field" onclick="openContactPicker('task')">
+          <span class="pf-icon">👤</span>
+          <span class="pf-val placeholder" id="task-contact-display">בחר איש קשר</span>
+          <span class="pf-arrow">›</span>
+        </div>
+        <input type="hidden" id="task-phone"/>
+      </div>
+      <div class="field" id="task-msg-field">
+        <label>תוכן ההודעה</label>
+        <textarea id="task-msg" placeholder="הכנס הודעה..."></textarea>
+      </div>
+      <div class="field">
+        <label>שעת שליחה</label>
+        <div class="picker-field" onclick="openTimePicker()">
+          <span class="pf-icon">🕐</span>
+          <span class="pf-val" id="task-time-display">08:00</span>
+          <span class="pf-arrow">›</span>
+        </div>
+        <input type="hidden" id="task-hour" value="8"/>
+        <input type="hidden" id="task-minute" value="0"/>
+      </div>
+      <div class="field">
+        <label>חזרה</label>
+        <div class="pills" id="task-repeat-pills">
+          <div class="pill selected" data-val="NONE" onclick="selectPill(this,'task-repeat-pills');toggleDays()">פעם אחת</div>
+          <div class="pill" data-val="DAILY" onclick="selectPill(this,'task-repeat-pills');toggleDays()">כל יום</div>
+          <div class="pill" data-val="WEEKLY" onclick="selectPill(this,'task-repeat-pills');toggleDays()">ימים נבחרים</div>
+        </div>
+      </div>
+      <div class="field" id="task-days-field" style="display:none">
+        <label>ימים בשבוע</label>
+        <div class="days">
+          <div class="day" data-day="1" onclick="toggleDay(this)">א׳</div>
+          <div class="day" data-day="2" onclick="toggleDay(this)">ב׳</div>
+          <div class="day" data-day="3" onclick="toggleDay(this)">ג׳</div>
+          <div class="day" data-day="4" onclick="toggleDay(this)">ד׳</div>
+          <div class="day" data-day="5" onclick="toggleDay(this)">ה׳</div>
+          <div class="day" data-day="6" onclick="toggleDay(this)">ו׳</div>
+          <div class="day" data-day="7" onclick="toggleDay(this)">ש׳</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-task')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveTask()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CONTACT PICKER MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-contacts">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">בחר איש קשר</span>
+      <button class="modal-close" onclick="closeModal('modal-contacts')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div class="search-row" style="margin-bottom:10px">
+        <input type="text" id="contact-search" placeholder="חיפוש שם או מספר..." oninput="filterContacts()"/>
+      </div>
+      <div id="contacts-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ APP PICKER MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-apps">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">בחר אפליקציה</span>
+      <button class="modal-close" onclick="closeModal('modal-apps')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:12px">
+      <div class="search-row" style="margin-bottom:10px">
+        <input type="text" id="app-search" placeholder="חיפוש..." oninput="filterApps()"/>
+      </div>
+      <div id="apps-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TIME PICKER MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-time">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">בחר שעה</span>
+      <button class="modal-close" onclick="closeModal('modal-time')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="time-row">
+        <div class="time-spinner">
+          <button class="time-btn" onclick="changeTime('hour',1)">▲</button>
+          <div class="time-val" id="tp-hour">08</div>
+          <button class="time-btn" onclick="changeTime('hour',-1)">▼</button>
+        </div>
+        <div class="time-sep">:</div>
+        <div class="time-spinner">
+          <button class="time-btn" onclick="changeTime('min',5)">▲</button>
+          <div class="time-val" id="tp-min">00</div>
+          <button class="time-btn" onclick="changeTime('min',-5)">▼</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-time')">ביטול</button>
+      <button class="btn btn-primary" onclick="confirmTime()">אישור</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+var shortcuts = [], tasks = [];
+var currentTab = 'shortcuts';
+var editingId = null;
+var mapCallerContext = null; // 'sc' or 'task'
+var mapMarker = null;
+var map = null;
+var pickedLat = null, pickedLng = null, pickedLabel = '';
+var contactPickerContext = null;
+var appPickerContext = null;
+var allContacts = [], allApps = [];
+var tpHour = 8, tpMin = 0;
+
+// ══════════════════════════════════════════════════════
+// ANDROID BRIDGE
+// ══════════════════════════════════════════════════════
+function callAndroid(method, data) {
+  try { Android[method](JSON.stringify(data)); } catch(e) {}
+}
+function loadData() {
+  try {
+    var d = Android.getData();
+    var parsed = JSON.parse(d);
+    shortcuts = parsed.shortcuts || [];
+    tasks = parsed.tasks || [];
+    allContacts = parsed.contacts || [];
+    allApps = parsed.apps || [];
+  } catch(e) {
+    shortcuts = []; tasks = []; allContacts = []; allApps = [];
+  }
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i)=> t.classList.toggle('active', (i===0&&tab==='shortcuts')||(i===1&&tab==='tasks')));
+  document.getElementById('list-shortcuts').style.display = tab==='shortcuts'?'':'none';
+  document.getElementById('list-tasks').style.display     = tab==='tasks'?'':'none';
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════
+var typeIcons = {DIAL:'📞',SMS:'✉️',MAPS:'🗺',WAZE:'🚗',URL:'🌐',APP:'📱'};
+var taskIcons = {SMS:'✉️',WA_MSG:'💬',WA_LOC:'📍'};
+
+function renderAll() { renderShortcuts(); renderTasks(); }
+
+function renderShortcuts() {
+  var el = document.getElementById('list-shortcuts');
+  if (!shortcuts.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">⚡</div><div>אין קיצורי דרך</div><div style="font-size:12px;margin-top:6px">לחץ + להוספה</div></div>'; return; }
+  el.innerHTML = shortcuts.map(sc => `
+    <div class="card">
+      <div class="card-icon">${typeIcons[sc.type]||'⚡'}</div>
+      <div class="card-body">
+        <div class="card-title">${sc.label}</div>
+        <div class="card-sub">${scSubtitle(sc)}</div>
+      </div>
+      <div class="card-actions">
+        <button class="icon-btn" onclick="pinShortcut('${sc.id}')" title="הצמד">📌</button>
+        <button class="icon-btn" onclick="editShortcut('${sc.id}')" title="ערוך">✏️</button>
+        <button class="icon-btn" onclick="deleteShortcut('${sc.id}')" title="מחק">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderTasks() {
+  var el = document.getElementById('list-tasks');
+  if (!tasks.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">⏰</div><div>אין משימות מתוזמנות</div><div style="font-size:12px;margin-top:6px">לחץ + להוספה</div></div>'; return; }
+  el.innerHTML = tasks.map(t => `
+    <div class="card" style="opacity:${t.enabled?1:.5}">
+      <div class="card-icon">${taskIcons[t.type]||'⏰'}</div>
+      <div class="card-body">
+        <div class="card-title">${t.label}</div>
+        <div class="card-sub">${t.contactName} | ${pad(t.hour)}:${pad(t.minute)} | ${repeatLabel(t.repeat)}</div>
+      </div>
+      <div class="card-actions">
+        <div class="switch ${t.enabled?'on':''}" onclick="toggleTask('${t.id}')"></div>
+        <button class="icon-btn" onclick="editTask('${t.id}')">✏️</button>
+        <button class="icon-btn" onclick="deleteTask('${t.id}')">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+function scSubtitle(sc) {
+  if (sc.type==='DIAL'||sc.type==='SMS') return sc.contactName||sc.phone;
+  if (sc.type==='MAPS'||sc.type==='WAZE') return sc.destLabel||`${sc.lat}, ${sc.lng}`;
+  if (sc.type==='URL') return sc.url;
+  if (sc.type==='APP') return sc.appName||sc.packageName;
+  return '';
+}
+function repeatLabel(r) { return r==='DAILY'?'כל יום':r==='WEEKLY'?'ימים נבחרים':'פעם אחת'; }
+function pad(n) { return String(n).padStart(2,'0'); }
+
+// ══════════════════════════════════════════════════════
+// SHORTCUT MODAL
+// ══════════════════════════════════════════════════════
+function openAddModal() {
+  editingId = null;
+  if (currentTab==='shortcuts') openShortcutModal();
+  else openTaskModal();
+}
+
+function openShortcutModal(sc) {
+  editingId = sc ? sc.id : null;
+  document.getElementById('shortcut-modal-title').textContent = sc ? 'עריכת קיצור' : 'קיצור דרך חדש';
+  document.getElementById('sc-label').value = sc ? sc.label : '';
+  document.getElementById('sc-phone').value = sc ? sc.phone||'' : '';
+  document.getElementById('sc-contact-display').textContent = sc&&sc.contactName ? sc.contactName+' ('+sc.phone+')' : 'בחר איש קשר';
+  document.getElementById('sc-contact-display').className = 'pf-val'+(sc&&sc.contactName?'':' placeholder');
+  document.getElementById('sc-sms-body').value = sc ? sc.smsBody||'' : '';
+  document.getElementById('sc-url').value = sc ? sc.url||'' : '';
+  document.getElementById('sc-package').value = sc ? sc.packageName||'' : '';
+  document.getElementById('sc-app-display').textContent = sc&&sc.appName ? sc.appName : 'בחר אפליקציה';
+  document.getElementById('sc-app-display').className = 'pf-val'+(sc&&sc.appName?'':' placeholder');
+  document.getElementById('sc-lat').value = sc ? sc.lat||'' : '';
+  document.getElementById('sc-lng').value = sc ? sc.lng||'' : '';
+  document.getElementById('sc-location-display').textContent = sc&&sc.destLabel ? sc.destLabel : 'בחר מיקום במפה';
+  document.getElementById('sc-location-display').className = 'pf-val'+(sc&&sc.destLabel?'':' placeholder');
+
+  var type = sc ? sc.type : 'DIAL';
+  document.querySelectorAll('#sc-type-pills .pill').forEach(p => {
+    p.classList.toggle('selected', p.dataset.val===type);
+  });
+  updateScSections(type);
+  openModal('modal-shortcut');
+}
+
+function updateScSections(type) {
+  document.getElementById('sc-phone-section').style.display = (type==='DIAL'||type==='SMS')?'':'none';
+  document.getElementById('sc-sms-body-field').style.display = type==='SMS'?'':'none';
+  document.getElementById('sc-location-section').style.display = (type==='MAPS'||type==='WAZE')?'':'none';
+  document.getElementById('sc-url-section').style.display = type==='URL'?'':'none';
+  document.getElementById('sc-app-section').style.display = type==='APP'?'':'none';
+}
+
+function selectPill(el, groupId) {
+  document.querySelectorAll('#'+groupId+' .pill').forEach(p=>p.classList.remove('selected'));
+  el.classList.add('selected');
+  if (groupId==='sc-type-pills') updateScSections(el.dataset.val);
+  if (groupId==='task-type-pills') updateTaskSections(el.dataset.val);
+}
+
+function saveShortcut() {
+  var type = document.querySelector('#sc-type-pills .pill.selected').dataset.val;
+  var sc = {
+    id: editingId || Date.now().toString(),
+    type, label: document.getElementById('sc-label').value.trim(),
+    phone: document.getElementById('sc-phone').value,
+    contactName: document.getElementById('sc-contact-display').className.includes('placeholder')?'':document.getElementById('sc-contact-display').textContent.split(' (')[0],
+    smsBody: document.getElementById('sc-sms-body').value,
+    url: document.getElementById('sc-url').value,
+    packageName: document.getElementById('sc-package').value,
+    appName: document.getElementById('sc-app-display').className.includes('placeholder')?'':document.getElementById('sc-app-display').textContent,
+    lat: parseFloat(document.getElementById('sc-lat').value)||0,
+    lng: parseFloat(document.getElementById('sc-lng').value)||0,
+    destLabel: document.getElementById('sc-location-display').className.includes('placeholder')?'':document.getElementById('sc-location-display').textContent,
+  };
+  if (!sc.label) { alert('יש להזין שם'); return; }
+  if (editingId) shortcuts = shortcuts.map(s=>s.id===editingId?sc:s);
+  else shortcuts.push(sc);
+  callAndroid('saveShortcut', sc);
+  closeModal('modal-shortcut');
+  renderShortcuts();
+}
+
+function editShortcut(id) { openShortcutModal(shortcuts.find(s=>s.id===id)); }
+function deleteShortcut(id) { if(confirm('למחוק?')){ shortcuts=shortcuts.filter(s=>s.id!==id); callAndroid('deleteShortcut',{id}); renderShortcuts(); } }
+function pinShortcut(id) { callAndroid('pinShortcut',{id}); }
+
+// ══════════════════════════════════════════════════════
+// TASK MODAL
+// ══════════════════════════════════════════════════════
+function openTaskModal(t) {
+  editingId = t ? t.id : null;
+  document.getElementById('task-modal-title').textContent = t ? 'עריכת משימה' : 'משימה מתוזמנת';
+  document.getElementById('task-label').value = t ? t.label : '';
+  document.getElementById('task-phone').value = t ? t.phone||'' : '';
+  document.getElementById('task-contact-display').textContent = t&&t.contactName ? t.contactName+' ('+t.phone+')' : 'בחר איש קשר';
+  document.getElementById('task-contact-display').className = 'pf-val'+(t&&t.contactName?'':' placeholder');
+  document.getElementById('task-msg').value = t ? t.message||'' : '';
+  tpHour = t ? t.hour : 8; tpMin = t ? t.minute : 0;
+  document.getElementById('task-time-display').textContent = pad(tpHour)+':'+pad(tpMin);
+  document.getElementById('task-hour').value = tpHour;
+  document.getElementById('task-minute').value = tpMin;
+
+  var type = t ? t.type : 'SMS';
+  var repeat = t ? t.repeat : 'NONE';
+  document.querySelectorAll('#task-type-pills .pill').forEach(p=>p.classList.toggle('selected',p.dataset.val===type));
+  document.querySelectorAll('#task-repeat-pills .pill').forEach(p=>p.classList.toggle('selected',p.dataset.val===repeat));
+  document.querySelectorAll('.day').forEach(d=>d.classList.remove('on'));
+  if (t&&t.days) t.days.forEach(day=>{ var el=document.querySelector('.day[data-day="'+day+'"]'); if(el) el.classList.add('on'); });
+  updateTaskSections(type);
+  toggleDays();
+  openModal('modal-task');
+}
+
+function updateTaskSections(type) {
+  document.getElementById('task-msg-field').style.display = type==='WA_LOC'?'none':'';
+}
+function toggleDays() {
+  var r = document.querySelector('#task-repeat-pills .pill.selected').dataset.val;
+  document.getElementById('task-days-field').style.display = r==='WEEKLY'?'':'none';
+}
+function toggleDay(el) { el.classList.toggle('on'); }
+
+function saveTask() {
+  var type   = document.querySelector('#task-type-pills .pill.selected').dataset.val;
+  var repeat = document.querySelector('#task-repeat-pills .pill.selected').dataset.val;
+  var days   = [...document.querySelectorAll('.day.on')].map(d=>parseInt(d.dataset.day));
+  var t = {
+    id: editingId || Date.now().toString(),
+    type, enabled: true,
+    label:       document.getElementById('task-label').value.trim(),
+    phone:       document.getElementById('task-phone').value,
+    contactName: document.getElementById('task-contact-display').className.includes('placeholder')?'':document.getElementById('task-contact-display').textContent.split(' (')[0],
+    message:     document.getElementById('task-msg').value,
+    hour:        parseInt(document.getElementById('task-hour').value),
+    minute:      parseInt(document.getElementById('task-minute').value),
+    repeat, days,
+  };
+  if (!t.label) { alert('יש להזין שם'); return; }
+  if (editingId) tasks = tasks.map(x=>x.id===editingId?t:x);
+  else tasks.push(t);
+  callAndroid('saveTask', t);
+  closeModal('modal-task');
+  renderTasks();
+}
+
+function editTask(id) { openTaskModal(tasks.find(t=>t.id===id)); }
+function deleteTask(id) { if(confirm('למחוק?')){ tasks=tasks.filter(t=>t.id!==id); callAndroid('deleteTask',{id}); renderTasks(); } }
+function toggleTask(id) {
+  var t = tasks.find(x=>x.id===id);
+  if(t){ t.enabled=!t.enabled; callAndroid('toggleTask',{id,enabled:t.enabled}); renderTasks(); }
+}
+
+// ══════════════════════════════════════════════════════
+// CONTACT PICKER
+// ══════════════════════════════════════════════════════
+function openContactPicker(ctx) {
+  contactPickerContext = ctx;
+  document.getElementById('contact-search').value = '';
+  renderContacts(allContacts);
+  openModal('modal-contacts');
+}
+
+function filterContacts() {
+  var q = document.getElementById('contact-search').value.toLowerCase();
+  renderContacts(allContacts.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q)));
+}
+
+function renderContacts(list) {
+  var el = document.getElementById('contacts-list');
+  if (!list.length) { el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted)">לא נמצאו אנשי קשר</div>'; return; }
+  el.innerHTML = list.map(c=>`
+    <div class="list-item" onclick="selectContact('${c.name.replace(/'/g,"\\'")}','${c.phone}')">
+      <span style="font-size:24px">👤</span>
+      <div><div class="li-main">${c.name}</div><div class="li-sub">${c.phone}</div></div>
+    </div>`).join('');
+}
+
+function selectContact(name, phone) {
+  var ctx = contactPickerContext;
+  document.getElementById(ctx+'-phone').value = phone;
+  var disp = document.getElementById(ctx+'-contact-display');
+  disp.textContent = name + ' (' + phone + ')';
+  disp.className = 'pf-val';
+  closeModal('modal-contacts');
+}
+
+// ══════════════════════════════════════════════════════
+// APP PICKER
+// ══════════════════════════════════════════════════════
+function openAppPicker(ctx) {
+  appPickerContext = ctx;
+  document.getElementById('app-search').value = '';
+  renderApps(allApps);
+  openModal('modal-apps');
+}
+
+function filterApps() {
+  var q = document.getElementById('app-search').value.toLowerCase();
+  renderApps(allApps.filter(a => a.name.toLowerCase().includes(q) || a.pkg.toLowerCase().includes(q)));
+}
+
+function renderApps(list) {
+  var el = document.getElementById('apps-list');
+  if (!list.length) { el.innerHTML='<div style="text-align:center;padding:20px;color:var(--muted)">לא נמצאו אפליקציות</div>'; return; }
+  el.innerHTML = list.map(a=>`
+    <div class="list-item" onclick="selectApp('${a.name.replace(/'/g,"\\'")}','${a.pkg}')">
+      <span style="font-size:24px">📱</span>
+      <div><div class="li-main">${a.name}</div><div class="li-sub">${a.pkg}</div></div>
+    </div>`).join('');
+}
+
+function selectApp(name, pkg) {
+  var ctx = appPickerContext;
+  document.getElementById(ctx+'-package').value = pkg;
+  var disp = document.getElementById(ctx+'-app-display');
+  disp.textContent = name;
+  disp.className = 'pf-val';
+  closeModal('modal-apps');
+}
+
+// ══════════════════════════════════════════════════════
+// TIME PICKER
+// ══════════════════════════════════════════════════════
+function openTimePicker() {
+  tpHour = parseInt(document.getElementById('task-hour').value)||8;
+  tpMin  = parseInt(document.getElementById('task-minute').value)||0;
+  document.getElementById('tp-hour').textContent = pad(tpHour);
+  document.getElementById('tp-min').textContent  = pad(tpMin);
+  openModal('modal-time');
+}
+function changeTime(field, delta) {
+  if (field==='hour') { tpHour=(tpHour+delta+24)%24; document.getElementById('tp-hour').textContent=pad(tpHour); }
+  else { tpMin=(tpMin+delta+60)%60; document.getElementById('tp-min').textContent=pad(tpMin); }
+}
+function confirmTime() {
+  document.getElementById('task-hour').value = tpHour;
+  document.getElementById('task-minute').value = tpMin;
+  document.getElementById('task-time-display').textContent = pad(tpHour)+':'+pad(tpMin);
+  closeModal('modal-time');
+}
+
+// ══════════════════════════════════════════════════════
+// MAP SCREEN
+// ══════════════════════════════════════════════════════
+function openMapScreen(ctx) {
+  mapCallerContext = ctx;
+  pickedLat = null; pickedLng = null; pickedLabel = '';
+  document.getElementById('map-confirm-btn').disabled = true;
+  document.getElementById('map-hint').textContent = 'לחץ על המפה לדקירת נקודה';
+  document.getElementById('map-search-input').value = '';
+
+  showScreen('screen-map');
+
+  setTimeout(function() {
+    if (!map) {
+      map = L.map('map', { zoomControl: true }).setView([31.7683, 35.2137], 9);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution:'© OpenStreetMap', maxZoom:19, subdomains:['a','b','c']
+      }).addTo(map);
+      map.on('click', function(e) {
+        pickedLat = Math.round(e.latlng.lat*1e6)/1e6;
+        pickedLng = Math.round(e.latlng.lng*1e6)/1e6;
+        pickedLabel = pickedLat + ', ' + pickedLng;
+        if (mapMarker) map.removeLayer(mapMarker);
+        mapMarker = L.marker([pickedLat, pickedLng]).addTo(map).bindPopup('📍 '+pickedLabel).openPopup();
+        document.getElementById('map-hint').textContent = '📍 '+pickedLabel;
+        document.getElementById('map-confirm-btn').disabled = false;
+      });
+    }
+    map.invalidateSize();
+  }, 100);
+}
+
+function searchMap() {
+  var q = document.getElementById('map-search-input').value.trim();
+  if (!q) return;
+  document.getElementById('map-hint').textContent = 'מחפש...';
+  var enc = encodeURIComponent(q);
+  fetch('https://nominatim.openstreetmap.org/search?q='+enc+'&format=json&limit=1', {
+    headers:{'User-Agent':'ShortcutMaker/1.0'}
+  })
+  .then(r=>r.json())
+  .then(function(data) {
+    if (data.length) {
+      var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      var label = data[0].display_name.split(',').slice(0,2).join(', ');
+      map.setView([lat,lng],15);
+      if (mapMarker) map.removeLayer(mapMarker);
+      mapMarker = L.marker([lat,lng]).addTo(map).bindPopup('📍 '+label).openPopup();
+      pickedLat=lat; pickedLng=lng; pickedLabel=label;
+      document.getElementById('map-hint').textContent = '📍 '+label;
+      document.getElementById('map-confirm-btn').disabled = false;
+    } else {
+      document.getElementById('map-hint').textContent = 'לא נמצא';
+    }
+  })
+  .catch(function(){ document.getElementById('map-hint').textContent = 'שגיאת חיפוש'; });
+}
+
+function confirmLocation() {
+  if (pickedLat===null) return;
+  var ctx = mapCallerContext;
+  document.getElementById(ctx+'-lat').value = pickedLat;
+  document.getElementById(ctx+'-lng').value = pickedLng;
+  var disp = document.getElementById(ctx+'-location-display');
+  disp.textContent = pickedLabel;
+  disp.className = 'pf-val';
+  showScreen('screen-main');
+}
+
+function closeMap() { showScreen('screen-main'); }
+
+// ══════════════════════════════════════════════════════
+// MODAL HELPERS
+// ══════════════════════════════════════════════════════
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id==='screen-map' && map) setTimeout(()=>map.invalidateSize(),150);
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+window.addEventListener('load', loadData);
+</script>
+</body>
+</html>
