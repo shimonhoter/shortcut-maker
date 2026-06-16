@@ -1,0 +1,2 @@
+-keep class com.shimon.shortcutmaker.data.** { *; }
+-keepclassmembers class com.shimon.shortcutmaker.data.** { *; }

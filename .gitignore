@@ -1,0 +1,51 @@
+# =============================================================
+# ShortcutMaker – .gitignore
+# =============================================================
+
+# ── Gradle build outputs ──────────────────────────────────────
+.gradle/
+build/
+app/build/
+**/build/
+
+# ── Local config files (machine-specific) ────────────────────
+local.properties
+*.local.properties
+
+# ── Android Studio / IntelliJ ────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ── Gradle wrapper JAR (binary, regenerated on first build) ──
+gradle/wrapper/gradle-wrapper.jar
+
+# ── Signing keystores – NEVER commit these ───────────────────
+*.jks
+*.keystore
+keystore.properties
+release.properties
+
+# ── Generated APKs / AABs ────────────────────────────────────
+*.apk
+*.aab
+*.ap_
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS junk ──────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
+
+# ── Termux-specific ──────────────────────────────────────────
+# Don't commit Termux home paths that are machine-specific
+.termux/
