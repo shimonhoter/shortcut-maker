@@ -22,6 +22,7 @@ import com.shimon.shortcutmaker.data.TaskType
 import com.shimon.shortcutmaker.receiver.SchedulerReceiver
 import com.shimon.shortcutmaker.shortcuts.ShortcutCreator
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 
