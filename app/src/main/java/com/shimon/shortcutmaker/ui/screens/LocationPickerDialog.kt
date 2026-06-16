@@ -1,7 +1,7 @@
 package com.shimon.shortcutmaker.ui.screens
 
-import android.content.Intent
-import android.net.Uri
+import android.annotation.SuppressLint
+import android.webkit.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,12 +17,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.*
 
 data class PickedLocation(val lat: Double, val lng: Double, val label: String)
-data class NominatimResult(val lat: Double, val lng: Double, val display: String, val short: String)
+data class NominatimResult(val lat: Double, val lng: Double, val short: String, val detail: String)
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LocationPickerDialog(
     onDismiss: () -> Unit,
@@ -33,16 +35,20 @@ fun LocationPickerDialog(
     var isSearching   by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<NominatimResult>>(emptyList()) }
     var errorMsg      by remember { mutableStateOf("") }
+    var pickedLat     by remember { mutableStateOf<Double?>(null) }
+    var pickedLng     by remember { mutableStateOf<Double?>(null) }
+    var pickedLabel   by remember { mutableStateOf("") }
+    var webViewRef    by remember { mutableStateOf<WebView?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 Text("בחר מיקום", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // ── חיפוש ─────────────────────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -58,7 +64,7 @@ fun LocationPickerDialog(
                             CoroutineScope(Dispatchers.IO).launch {
                                 try {
                                     val enc = java.net.URLEncoder.encode(searchQuery, "UTF-8")
-                                    val url = "https://nominatim.openstreetmap.org/search?q=$enc&format=json&limit=6"
+                                    val url = "https://nominatim.openstreetmap.org/search?q=$enc&format=json&limit=5"
                                     val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                                     conn.setRequestProperty("User-Agent", "ShortcutMaker/1.0")
                                     conn.connectTimeout = 8000; conn.readTimeout = 8000
@@ -68,22 +74,25 @@ fun LocationPickerDialog(
                                     val results = (0 until arr.length()).map { i ->
                                         val o = arr.getJSONObject(i)
                                         NominatimResult(
-                                            lat = o.getDouble("lat"),
-                                            lng = o.getDouble("lon"),
-                                            display = o.getString("display_name"),
-                                            short = o.getString("display_name").split(",").take(2).joinToString(", ")
+                                            lat   = o.getDouble("lat"),
+                                            lng   = o.getDouble("lon"),
+                                            short = o.getString("display_name").split(",").take(2).joinToString(", "),
+                                            detail = o.getString("display_name").split(",").drop(2).take(2).joinToString(", ")
                                         )
                                     }
                                     withContext(Dispatchers.Main) {
                                         isSearching = false
                                         searchResults = results
                                         if (results.isEmpty()) errorMsg = "לא נמצאו תוצאות"
+                                        else {
+                                            // קפוץ לתוצאה ראשונה במפה
+                                            val r = results[0]
+                                            val js = "jumpTo(${r.lat}, ${r.lng}, '${r.short.replace("'","\\'")}');"
+                                            webViewRef?.evaluateJavascript(js, null)
+                                        }
                                     }
                                 } catch (e: Exception) {
-                                    withContext(Dispatchers.Main) {
-                                        isSearching = false
-                                        errorMsg = "שגיאת חיפוש – בדוק חיבור לאינטרנט"
-                                    }
+                                    withContext(Dispatchers.Main) { isSearching = false; errorMsg = "שגיאת חיפוש" }
                                 }
                             }
                         }
@@ -96,99 +105,94 @@ fun LocationPickerDialog(
                 }
 
                 if (errorMsg.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(errorMsg, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    Text(errorMsg, color = MaterialTheme.colorScheme.error, fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp))
                 }
-
-                Spacer(Modifier.height(8.dp))
 
                 // ── תוצאות חיפוש ──────────────────────────────────────────────
-                if (searchResults.isNotEmpty()) {
-                    Text("בחר מיקום:", fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                if (searchResults.size > 1) {
                     Spacer(Modifier.height(4.dp))
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(searchResults) { result ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
-                                    .clickable {
-                                        onLocationPicked(PickedLocation(result.lat, result.lng, result.short))
-                                    },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    LazyColumn(modifier = Modifier.heightIn(max = 130.dp)) {
+                        items(searchResults) { r ->
+                            Row(modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val js = "jumpTo(${r.lat}, ${r.lng}, '${r.short.replace("'","\\'")}');"
+                                    webViewRef?.evaluateJavascript(js, null)
+                                    searchResults = emptyList()
+                                }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.LocationOn, null,
-                                        tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(result.short, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                        Text(
-                                            result.display.split(",").drop(2).take(2).joinToString(", "),
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                        )
-                                        Text(
-                                            "${"%.4f".format(result.lat)}, ${"%.4f".format(result.lng)}",
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                        )
-                                    }
+                                Icon(Icons.Default.LocationOn, null,
+                                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column {
+                                    Text(r.short, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    if (r.detail.isNotBlank())
+                                        Text(r.detail, fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                                 }
                             }
-                        }
-                    }
-                } else {
-                    // מצב ריק – הסבר + כפתור מפות
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(56.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                        Spacer(Modifier.height(12.dp))
-                        Text("חפש כתובת בשורת החיפוש למעלה",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        Spacer(Modifier.height(6.dp))
-                        Text("לדוגמה: \"תל אביב\", \"רחוב הרצל 5 ירושלים\"",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
-                        Spacer(Modifier.height(24.dp))
-                        HorizontalDivider()
-                        Spacer(Modifier.height(16.dp))
-                        Text("או חפש במפה וקבל קואורדינטות:",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("geo:31.7683,35.2137?q=31.7683,35.2137"))
-                                try {
-                                    intent.setPackage("com.google.android.apps.maps")
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW,
-                                        Uri.parse("https://maps.google.com")))
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Map, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("פתח Google Maps לחיפוש")
+                            HorizontalDivider(thickness = 0.5.dp)
                         }
                     }
                 }
 
+                Spacer(Modifier.height(6.dp))
+
+                // ── WebView עם Leaflet מ-assets ───────────────────────────────
+                Box(modifier = Modifier.weight(1f)) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).also { wv ->
+                                wv.settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    allowFileAccess = true
+                                    allowContentAccess = true
+                                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    userAgentString = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/91.0 Mobile Safari/537.36"
+                                }
+                                wv.webChromeClient = WebChromeClient()
+                                wv.webViewClient = WebViewClient()
+                                wv.addJavascriptInterface(object : Any() {
+                                    @JavascriptInterface
+                                    fun onPick(lat: Double, lng: Double, label: String) {
+                                        pickedLat = lat
+                                        pickedLng = lng
+                                        pickedLabel = label
+                                    }
+                                }, "Android")
+                                // טוען map.html מ-assets – Leaflet טעון מקומית
+                                wv.loadUrl("file:///android_asset/map.html")
+                                webViewRef = wv
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // ── מיקום נבחר ────────────────────────────────────────────────
+                if (pickedLat != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("📍 $pickedLabel", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                    Text("ביטול")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("ביטול") }
+                    Button(
+                        onClick = {
+                            onLocationPicked(PickedLocation(
+                                pickedLat ?: 0.0, pickedLng ?: 0.0,
+                                pickedLabel.ifBlank { searchQuery }
+                            ))
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = pickedLat != null
+                    ) { Text("אישור") }
                 }
             }
         }
