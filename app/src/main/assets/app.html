@@ -21,7 +21,8 @@
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:15px;overflow:hidden}
 
 /* ── SCREENS ── */
-.screen{display:none;flex-direction:column;height:100%;overflow:hidden}
+.screen{display:none;flex-direction:column;height:100%;overflow:hidden;position:relative;z-index:1}
+#screen-map.active{z-index:300}
 .screen.active{display:flex}
 
 /* ── TOPBAR ── */
@@ -715,9 +716,12 @@ function confirmTime() {
 // ══════════════════════════════════════════════════════
 function openMapScreen(ctx) {
   mapCallerContext = ctx;
+  closeModal('modal-shortcut');
+  closeModal('modal-task');
   pickedLat = null; pickedLng = null; pickedLabel = '';
   document.getElementById('map-confirm-btn').disabled = true;
   document.getElementById('map-hint').textContent = 'לחץ על המפה לדקירת נקודה';
+  document.getElementById('map-picked-label').textContent = '';
   document.getElementById('map-search-input').value = '';
 
   showScreen('screen-map');
@@ -780,9 +784,16 @@ function confirmLocation() {
   disp.textContent = pickedLabel;
   disp.className = 'pf-val';
   showScreen('screen-main');
+  if (ctx === 'sc') openModal('modal-shortcut');
+  else if (ctx === 'task') openModal('modal-task');
 }
 
-function closeMap() { showScreen('screen-main'); }
+function closeMap() {
+  var ctx = mapCallerContext;
+  showScreen('screen-main');
+  if (ctx === 'sc') openModal('modal-shortcut');
+  else if (ctx === 'task') openModal('modal-task');
+}
 
 // ══════════════════════════════════════════════════════
 // MODAL HELPERS
