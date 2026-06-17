@@ -150,18 +150,16 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
   <div class="topbar">
     <button class="back-btn" onclick="closeMap()">←</button>
     <h1>בחר מיקום</h1>
+    <button class="btn btn-primary" id="map-confirm-btn" onclick="confirmLocation()" disabled style="flex:0;padding:8px 16px;font-size:14px;border-radius:8px">אישור</button>
   </div>
-  <div class="search-row" style="padding:10px 12px;flex-shrink:0">
-    <input type="text" id="map-search-input" placeholder="חפש כתובת..." onkeydown="if(event.key==='Enter')searchMap()"/>
+  <div class="search-row" style="padding:8px 12px;flex-shrink:0">
+    <input type="text" id="map-search-input" placeholder="חפש כתובת..." onkeydown="if(event.key==='Enter'){event.preventDefault();searchMap();}"/>
     <button class="search-btn" onclick="searchMap()">🔍</button>
   </div>
-  <div class="map-screen-inner">
-    <div id="map"></div>
-    <div id="map-hint">לחץ על המפה לדקירת נקודה</div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn btn-outline" onclick="closeMap()">ביטול</button>
-    <button class="btn btn-primary" id="map-confirm-btn" onclick="confirmLocation()" disabled>אישור</button>
+  <div id="map-picked-label" style="padding:4px 12px;font-size:12px;color:#4DD0E1;flex-shrink:0;min-height:18px"></div>
+  <div style="flex:1;position:relative;overflow:hidden" dir="ltr">
+    <div id="map" style="width:100%;height:100%;direction:ltr"></div>
+    <div id="map-hint" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:7px 16px;border-radius:20px;font-size:12px;z-index:9999;pointer-events:none;white-space:nowrap;direction:rtl;max-width:90%;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.4)">לחץ על המפה לדקירת נקודה</div>
   </div>
 </div>
 
@@ -714,6 +712,20 @@ function confirmTime() {
 // ══════════════════════════════════════════════════════
 // MAP SCREEN
 // ══════════════════════════════════════════════════════
+function safeSetText(id, text) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = text;
+  else console.error('safeSetText: element not found: ' + id);
+}
+function safeSetVal(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.value = val;
+}
+function safeSetDisabled(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.disabled = val;
+}
+
 function openMapScreen(ctx) {
   try {
     console.log('openMapScreen called with ctx=' + ctx);
@@ -721,10 +733,10 @@ function openMapScreen(ctx) {
     closeModal('modal-shortcut');
     closeModal('modal-task');
     pickedLat = null; pickedLng = null; pickedLabel = '';
-    document.getElementById('map-confirm-btn').disabled = true;
-    document.getElementById('map-hint').textContent = 'לחץ על המפה לדקירת נקודה';
-    document.getElementById('map-picked-label').textContent = '';
-    document.getElementById('map-search-input').value = '';
+    safeSetDisabled('map-confirm-btn', true);
+    safeSetText('map-hint', 'לחץ על המפה לדקירת נקודה');
+    safeSetText('map-picked-label', '');
+    safeSetVal('map-search-input', '');
 
     showScreen('screen-map');
   } catch(e) {
@@ -734,65 +746,76 @@ function openMapScreen(ctx) {
   }
 
   setTimeout(function() {
-    if (!map) {
-      map = L.map('map', { zoomControl: true, attributionControl: true }).setView([31.7683, 35.2137], 9);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution:'© OpenStreetMap', maxZoom:19, subdomains:['a','b','c']
-      }).addTo(map);
-      map.on('click', function(e) {
-        pickedLat = Math.round(e.latlng.lat*1e6)/1e6;
-        pickedLng = Math.round(e.latlng.lng*1e6)/1e6;
-        pickedLabel = pickedLat + ', ' + pickedLng;
-        if (mapMarker) map.removeLayer(mapMarker);
-        mapMarker = L.marker([pickedLat, pickedLng]).addTo(map).bindPopup('📍 '+pickedLabel).openPopup();
-        document.getElementById('map-hint').textContent = '📍 '+pickedLabel;
-        document.getElementById('map-picked-label').textContent = '📍 '+pickedLabel;
-        document.getElementById('map-confirm-btn').disabled = false;
-      });
+    try {
+      if (!map) {
+        map = L.map('map', { zoomControl: true, attributionControl: true }).setView([31.7683, 35.2137], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution:'© OpenStreetMap', maxZoom:19, subdomains:['a','b','c']
+        }).addTo(map);
+        map.on('click', function(e) {
+          pickedLat = Math.round(e.latlng.lat*1e6)/1e6;
+          pickedLng = Math.round(e.latlng.lng*1e6)/1e6;
+          pickedLabel = pickedLat + ', ' + pickedLng;
+          if (mapMarker) map.removeLayer(mapMarker);
+          mapMarker = L.marker([pickedLat, pickedLng]).addTo(map).bindPopup('📍 '+pickedLabel).openPopup();
+          safeSetText('map-hint', '📍 '+pickedLabel);
+          safeSetText('map-picked-label', '📍 '+pickedLabel);
+          safeSetDisabled('map-confirm-btn', false);
+        });
+      }
       map.invalidateSize();
+      setTimeout(function(){ map.invalidateSize(); }, 300);
+    } catch(e) {
+      console.error('map init error: ' + e.message);
+      alert('שגיאה באתחול המפה: ' + e.message);
     }
-    map.invalidateSize();
-    setTimeout(function(){ map.invalidateSize(); }, 300);
   }, 200);
 }
 
 function searchMap() {
-  var q = document.getElementById('map-search-input').value.trim();
+  var qEl = document.getElementById('map-search-input');
+  if (!qEl) return;
+  var q = qEl.value.trim();
   if (!q) return;
-  document.getElementById('map-hint').textContent = 'מחפש...';
+  safeSetText('map-hint', 'מחפש...');
   var enc = encodeURIComponent(q);
   fetch('https://nominatim.openstreetmap.org/search?q='+enc+'&format=json&limit=1', {
     headers:{'User-Agent':'ShortcutMaker/1.0'}
   })
   .then(r=>r.json())
   .then(function(data) {
-    if (data.length) {
+    if (data.length && map) {
       var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
       var label = data[0].display_name.split(',').slice(0,2).join(', ');
       map.setView([lat,lng],15);
       if (mapMarker) map.removeLayer(mapMarker);
       mapMarker = L.marker([lat,lng]).addTo(map).bindPopup('📍 '+label).openPopup();
       pickedLat=lat; pickedLng=lng; pickedLabel=label;
-      document.getElementById('map-hint').textContent = '📍 '+label;
-      document.getElementById('map-confirm-btn').disabled = false;
+      safeSetText('map-hint', '📍 '+label);
+      safeSetText('map-picked-label', '📍 '+label);
+      safeSetDisabled('map-confirm-btn', false);
     } else {
-      document.getElementById('map-hint').textContent = 'לא נמצא';
+      safeSetText('map-hint', 'לא נמצא');
     }
   })
-  .catch(function(){ document.getElementById('map-hint').textContent = 'שגיאת חיפוש'; });
+  .catch(function(err){ safeSetText('map-hint', 'שגיאת חיפוש'); console.error('searchMap error: '+err.message); });
 }
 
 function confirmLocation() {
-  if (pickedLat===null) return;
-  var ctx = mapCallerContext;
-  document.getElementById(ctx+'-lat').value = pickedLat;
-  document.getElementById(ctx+'-lng').value = pickedLng;
-  var disp = document.getElementById(ctx+'-location-display');
-  disp.textContent = pickedLabel;
-  disp.className = 'pf-val';
-  showScreen('screen-main');
-  if (ctx === 'sc') openModal('modal-shortcut');
-  else if (ctx === 'task') openModal('modal-task');
+  try {
+    if (pickedLat===null) return;
+    var ctx = mapCallerContext;
+    safeSetVal(ctx+'-lat', pickedLat);
+    safeSetVal(ctx+'-lng', pickedLng);
+    var disp = document.getElementById(ctx+'-location-display');
+    if (disp) { disp.textContent = pickedLabel; disp.className = 'pf-val'; }
+    showScreen('screen-main');
+    if (ctx === 'sc') openModal('modal-shortcut');
+    else if (ctx === 'task') openModal('modal-task');
+  } catch(e) {
+    console.error('confirmLocation error: ' + e.message);
+    alert('שגיאה באישור מיקום: ' + e.message);
+  }
 }
 
 function closeMap() {
