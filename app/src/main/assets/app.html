@@ -715,16 +715,23 @@ function confirmTime() {
 // MAP SCREEN
 // ══════════════════════════════════════════════════════
 function openMapScreen(ctx) {
-  mapCallerContext = ctx;
-  closeModal('modal-shortcut');
-  closeModal('modal-task');
-  pickedLat = null; pickedLng = null; pickedLabel = '';
-  document.getElementById('map-confirm-btn').disabled = true;
-  document.getElementById('map-hint').textContent = 'לחץ על המפה לדקירת נקודה';
-  document.getElementById('map-picked-label').textContent = '';
-  document.getElementById('map-search-input').value = '';
+  try {
+    console.log('openMapScreen called with ctx=' + ctx);
+    mapCallerContext = ctx;
+    closeModal('modal-shortcut');
+    closeModal('modal-task');
+    pickedLat = null; pickedLng = null; pickedLabel = '';
+    document.getElementById('map-confirm-btn').disabled = true;
+    document.getElementById('map-hint').textContent = 'לחץ על המפה לדקירת נקודה';
+    document.getElementById('map-picked-label').textContent = '';
+    document.getElementById('map-search-input').value = '';
 
-  showScreen('screen-map');
+    showScreen('screen-map');
+  } catch(e) {
+    console.error('openMapScreen error: ' + e.message);
+    alert('שגיאה בפתיחת המפה: ' + e.message);
+    return;
+  }
 
   setTimeout(function() {
     if (!map) {
@@ -798,12 +805,29 @@ function closeMap() {
 // ══════════════════════════════════════════════════════
 // MODAL HELPERS
 // ══════════════════════════════════════════════════════
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id) {
+  try {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('open');
+    else console.error('openModal: element not found: ' + id);
+  } catch(e) { console.error('openModal error: ' + e.message); }
+}
+function closeModal(id) {
+  try {
+    var el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+  } catch(e) { console.error('closeModal error: ' + e.message); }
+}
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  if (id==='screen-map' && map) setTimeout(()=>map.invalidateSize(),150);
+  try {
+    console.log('showScreen called with: ' + id);
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    var el = document.getElementById(id);
+    if (!el) { console.error('showScreen: element not found: ' + id); return; }
+    el.classList.add('active');
+    console.log('screen active now, classList=' + el.className);
+    if (id==='screen-map' && map) setTimeout(()=>map.invalidateSize(),150);
+  } catch(e) { console.error('showScreen error: ' + e.message); }
 }
 
 // ══════════════════════════════════════════════════════

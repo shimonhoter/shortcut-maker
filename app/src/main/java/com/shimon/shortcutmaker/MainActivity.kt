@@ -22,8 +22,6 @@ import com.shimon.shortcutmaker.data.TaskType
 import com.shimon.shortcutmaker.receiver.SchedulerReceiver
 import com.shimon.shortcutmaker.shortcuts.ShortcutCreator
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -51,7 +49,13 @@ class MainActivity : ComponentActivity() {
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 userAgentString = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/91.0 Mobile Safari/537.36"
             }
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                    android.util.Log.d("WebViewConsole",
+                        "${message.message()} -- line ${message.lineNumber()} of ${message.sourceId()}")
+                    return true
+                }
+            }
             webViewClient = WebViewClient()
             addJavascriptInterface(AppBridge(), "Android")
             loadUrl("file:///android_asset/app.html")
@@ -241,7 +245,7 @@ class MainActivity : ComponentActivity() {
 
     // ── Extension ─────────────────────────────────────────────────────────────
     private suspend fun <T> kotlinx.coroutines.flow.Flow<T>.firstValue(): T =
-        take(1).toList()[0]
+        kotlinx.coroutines.flow.first()
 
     private fun ShortcutConfig.toJson() = JSONObject().apply {
         put("id", id); put("label", label)
