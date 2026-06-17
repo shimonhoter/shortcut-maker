@@ -141,17 +141,26 @@ class SchedulerReceiver : BroadcastReceiver() {
     // ─── Execution ────────────────────────────────────────────────────────────
 
     private fun executeTask(context: Context, task: ScheduledTask) {
+        android.util.Log.d(TAG, "Executing task type=${task.type} to=${task.phoneNumber}")
         when (task.type) {
-            TaskType.SMS -> sendSms(context, task)
-            TaskType.WHATSAPP_MESSAGE -> openWhatsApp(context, task)
+            TaskType.SMS               -> sendSms(context, task)
+            TaskType.WHATSAPP_MESSAGE  -> openWhatsApp(context, task)
             TaskType.WHATSAPP_LOCATION -> startLocationService(context, task)
         }
     }
 
     private fun sendSms(context: Context, task: ScheduledTask) {
         try {
-            val smsManager = SmsManager.getDefault()
-            smsManager.sendTextMessage(task.phoneNumber, null, task.messageBody, null, null)
+            val smsManager = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                context.getSystemService(SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION") SmsManager.getDefault()
+            }
+            val parts = smsManager.divideMessage(task.messageBody)
+            if (parts.size == 1)
+                smsManager.sendTextMessage(task.phoneNumber.trim(), null, task.messageBody, null, null)
+            else
+                smsManager.sendMultipartTextMessage(task.phoneNumber.trim(), null, parts, null, null)
             Log.d(TAG, "SMS sent to ${task.phoneNumber}")
         } catch (e: Exception) {
             Log.e(TAG, "SMS failed: ${e.message}")

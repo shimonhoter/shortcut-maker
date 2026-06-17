@@ -147,18 +147,16 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
   <div class="topbar">
     <button class="back-btn" onclick="closeMap()">←</button>
     <h1>בחר מיקום</h1>
+    <button class="btn btn-primary" id="map-confirm-btn" onclick="confirmLocation()" disabled style="flex:0;padding:8px 16px;font-size:14px;border-radius:8px">אישור</button>
   </div>
-  <div class="search-row" style="padding:10px 12px;flex-shrink:0">
+  <div class="search-row" style="padding:8px 12px;flex-shrink:0">
     <input type="text" id="map-search-input" placeholder="חפש כתובת..." onkeydown="if(event.key==='Enter')searchMap()"/>
     <button class="search-btn" onclick="searchMap()">🔍</button>
   </div>
-  <div class="map-screen-inner">
-    <div id="map"></div>
-    <div id="map-hint">לחץ על המפה לדקירת נקודה</div>
-  </div>
-  <div class="modal-footer">
-    <button class="btn btn-outline" onclick="closeMap()">ביטול</button>
-    <button class="btn btn-primary" id="map-confirm-btn" onclick="confirmLocation()" disabled>אישור</button>
+  <div id="map-picked-label" style="padding:4px 12px;font-size:12px;color:#4DD0E1;flex-shrink:0;min-height:20px"></div>
+  <div style="flex:1;position:relative;overflow:hidden">
+    <div id="map" style="width:100%;height:100%"></div>
+    <div id="map-hint" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;z-index:500;pointer-events:none;white-space:nowrap">לחץ על המפה לדקירת נקודה</div>
   </div>
 </div>
 
@@ -733,6 +731,7 @@ function openMapScreen(ctx) {
         if (mapMarker) map.removeLayer(mapMarker);
         mapMarker = L.marker([pickedLat, pickedLng]).addTo(map).bindPopup('📍 '+pickedLabel).openPopup();
         document.getElementById('map-hint').textContent = '📍 '+pickedLabel;
+        document.getElementById('map-picked-label').textContent = '📍 '+pickedLabel;
         document.getElementById('map-confirm-btn').disabled = false;
       });
     }
@@ -758,6 +757,7 @@ function searchMap() {
       mapMarker = L.marker([lat,lng]).addTo(map).bindPopup('📍 '+label).openPopup();
       pickedLat=lat; pickedLng=lng; pickedLabel=label;
       document.getElementById('map-hint').textContent = '📍 '+label;
+      document.getElementById('map-picked-label').textContent = '📍 '+label;
       document.getElementById('map-confirm-btn').disabled = false;
     } else {
       document.getElementById('map-hint').textContent = 'לא נמצא';
@@ -769,12 +769,16 @@ function searchMap() {
 function confirmLocation() {
   if (pickedLat===null) return;
   var ctx = mapCallerContext;
-  document.getElementById(ctx+'-lat').value = pickedLat;
-  document.getElementById(ctx+'-lng').value = pickedLng;
-  var disp = document.getElementById(ctx+'-location-display');
-  disp.textContent = pickedLabel;
-  disp.className = 'pf-val';
+  var latEl = document.getElementById(ctx+'-lat');
+  var lngEl = document.getElementById(ctx+'-lng');
+  var disp  = document.getElementById(ctx+'-location-display');
+  if (latEl) latEl.value = pickedLat;
+  if (lngEl) lngEl.value = pickedLng;
+  if (disp)  { disp.textContent = pickedLabel; disp.className = 'pf-val'; }
   showScreen('screen-main');
+  // פתח מחדש את המודל הרלוונטי
+  if (ctx === 'sc') openModal('modal-shortcut');
+  else openModal('modal-task');
 }
 
 function closeMap() { showScreen('screen-main'); }
