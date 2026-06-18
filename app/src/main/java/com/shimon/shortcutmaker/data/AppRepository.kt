@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -65,10 +66,8 @@ class AppRepository(private val context: Context) {
     }
 
     suspend fun getAllTasks(): List<ScheduledTask> {
-        val prefs = context.dataStore.data
-        var result = emptyList<ScheduledTask>()
-        prefs.collect { result = parseTasks(it[KEY_TASKS] ?: "[]") }
-        return result
+        val json = context.dataStore.data.first()[KEY_TASKS] ?: "[]"
+        return parseTasks(json)
     }
 
     // ─── Serialization ────────────────────────────────────────────────────────
