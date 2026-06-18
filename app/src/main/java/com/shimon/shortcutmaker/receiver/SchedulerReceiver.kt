@@ -34,7 +34,20 @@ class SchedulerReceiver : BroadcastReceiver() {
             val pi = pendingIntentForTask(context, task)
 
             val triggerMillis = when (task.repeatMode) {
-                RepeatMode.NONE -> task.triggerAtMillis
+                RepeatMode.NONE ->
+                    // Prefer explicit date+time picker value if set (spec 2.2 Date & Time Picker),
+                    // fall back to legacy triggerAtMillis / hour+minute logic.
+                    if (task.targetDateMillis > 0) {
+                        Calendar.getInstance().apply {
+                            timeInMillis = task.targetDateMillis
+                            set(Calendar.HOUR_OF_DAY, task.hourOfDay)
+                            set(Calendar.MINUTE, task.minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                    } else {
+                        task.triggerAtMillis
+                    }
 
                 RepeatMode.DAILY -> nextOccurrenceMillis(task.hourOfDay, task.minute, listOf())
 
@@ -128,11 +141,30 @@ class SchedulerReceiver : BroadcastReceiver() {
             }
             if (!task.isEnabled) return@launch
 
-            executeTask(context, task)
+            val result = executeTask(context, task)
 
-            // Reschedule if repeating
+            // Update status per spec 2.1: Pending -> Sent / Failed
+            val updated = if (result.isSuccess) {
+                task.copy(
+                    status = com.shimon.shortcutmaker.data.TaskStatus.SENT,
+                    sentAtMillis = System.currentTimeMillis(),
+                    errorReason = "",
+                )
+            } else {
+                task.copy(
+                    status = com.shimon.shortcutmaker.data.TaskStatus.FAILED,
+                    errorReason = result.exceptionOrNull()?.message ?: "שגיאה לא ידועה",
+                    retryCount = task.retryCount + 1,
+                )
+            }
+            repo.saveTask(updated)
+
+            // Reschedule if repeating — reset to PENDING for the next occurrence
             when (task.repeatMode) {
-                RepeatMode.DAILY, RepeatMode.WEEKLY -> scheduleTask(context, task)
+                RepeatMode.DAILY, RepeatMode.WEEKLY -> {
+                    repo.saveTask(updated.copy(status = com.shimon.shortcutmaker.data.TaskStatus.PENDING))
+                    scheduleTask(context, task)
+                }
                 RepeatMode.NONE -> { /* one-shot, nothing to do */ }
             }
         }
@@ -140,17 +172,16 @@ class SchedulerReceiver : BroadcastReceiver() {
 
     // ─── Execution ────────────────────────────────────────────────────────────
 
-    private fun executeTask(context: Context, task: ScheduledTask) {
-        android.util.Log.d(TAG, "Executing task type=${task.type} to=${task.phoneNumber}")
-        when (task.type) {
+    private fun executeTask(context: Context, task: ScheduledTask): Result<Unit> {
+        return when (task.type) {
             TaskType.SMS               -> sendSms(context, task)
             TaskType.WHATSAPP_MESSAGE  -> openWhatsApp(context, task)
             TaskType.WHATSAPP_LOCATION -> startLocationService(context, task)
         }
     }
 
-    private fun sendSms(context: Context, task: ScheduledTask) {
-        try {
+    private fun sendSms(context: Context, task: ScheduledTask): Result<Unit> {
+        return try {
             val smsManager = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 context.getSystemService(SmsManager::class.java)
             } else {
@@ -162,33 +193,41 @@ class SchedulerReceiver : BroadcastReceiver() {
             else
                 smsManager.sendMultipartTextMessage(task.phoneNumber.trim(), null, parts, null, null)
             Log.d(TAG, "SMS sent to ${task.phoneNumber}")
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "SMS failed: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    private fun openWhatsApp(context: Context, task: ScheduledTask) {
-        // Encode phone as international without '+' for WhatsApp URI
-        val phone = task.phoneNumber.trimStart('+').replace(" ", "").replace("-", "")
-        val encodedMsg = java.net.URLEncoder.encode(task.messageBody, "UTF-8")
-        val uri = android.net.Uri.parse("https://wa.me/$phone?text=$encodedMsg")
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            setPackage("com.whatsapp")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
+    private fun openWhatsApp(context: Context, task: ScheduledTask): Result<Unit> {
+        return try {
+            val phone = task.phoneNumber.trimStart('+').replace(" ", "").replace("-", "")
+            val encodedMsg = java.net.URLEncoder.encode(task.messageBody, "UTF-8")
+            val uri = android.net.Uri.parse("https://wa.me/$phone?text=$encodedMsg")
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.whatsapp")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             context.startActivity(intent)
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "WhatsApp not installed: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    private fun startLocationService(context: Context, task: ScheduledTask) {
-        val serviceIntent = Intent(context, LocationSharingService::class.java).apply {
-            putExtra(LocationSharingService.EXTRA_PHONE, task.phoneNumber)
-            putExtra(LocationSharingService.EXTRA_CONTACT_NAME, task.contactName)
+    private fun startLocationService(context: Context, task: ScheduledTask): Result<Unit> {
+        return try {
+            val serviceIntent = Intent(context, LocationSharingService::class.java).apply {
+                putExtra(LocationSharingService.EXTRA_PHONE, task.phoneNumber)
+                putExtra(LocationSharingService.EXTRA_CONTACT_NAME, task.contactName)
+            }
+            context.startForegroundService(serviceIntent)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-        context.startForegroundService(serviceIntent)
     }
 }
 

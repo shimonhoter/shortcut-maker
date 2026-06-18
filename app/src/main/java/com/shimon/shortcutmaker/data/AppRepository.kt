@@ -126,9 +126,15 @@ class AppRepository(private val context: Context) {
                 put("messageBody", t.messageBody)
                 put("hourOfDay", t.hourOfDay)
                 put("minute", t.minute)
+                put("targetDateMillis", t.targetDateMillis)
                 put("repeatMode", t.repeatMode.name)
                 put("daysOfWeek", JSONArray(t.daysOfWeek))
                 put("triggerAtMillis", t.triggerAtMillis)
+                put("status", t.status.name)
+                put("createdAtMillis", t.createdAtMillis)
+                put("sentAtMillis", t.sentAtMillis)
+                put("errorReason", t.errorReason)
+                put("retryCount", t.retryCount)
             })
         }
         return arr.toString()
@@ -142,18 +148,24 @@ class AppRepository(private val context: Context) {
                 val days = (0 until o.getJSONArray("daysOfWeek").length())
                     .map { o.getJSONArray("daysOfWeek").getInt(it) }
                 ScheduledTask(
-                    id              = o.getString("id"),
-                    label           = o.getString("label"),
-                    type            = TaskType.valueOf(o.getString("type")),
-                    isEnabled       = o.getBoolean("isEnabled"),
-                    contactName     = o.optString("contactName"),
-                    phoneNumber     = o.optString("phoneNumber"),
-                    messageBody     = o.optString("messageBody"),
-                    hourOfDay       = o.getInt("hourOfDay"),
-                    minute          = o.getInt("minute"),
-                    repeatMode      = RepeatMode.valueOf(o.optString("repeatMode", "NONE")),
-                    daysOfWeek      = days,
-                    triggerAtMillis = o.optLong("triggerAtMillis", 0L),
+                    id               = o.getString("id"),
+                    label            = o.getString("label"),
+                    type             = TaskType.valueOf(o.getString("type")),
+                    isEnabled        = o.getBoolean("isEnabled"),
+                    contactName      = o.optString("contactName"),
+                    phoneNumber      = o.optString("phoneNumber"),
+                    messageBody      = o.optString("messageBody"),
+                    hourOfDay        = o.getInt("hourOfDay"),
+                    minute           = o.getInt("minute"),
+                    targetDateMillis = o.optLong("targetDateMillis", 0L),
+                    repeatMode       = RepeatMode.valueOf(o.optString("repeatMode", "NONE")),
+                    daysOfWeek       = days,
+                    triggerAtMillis  = o.optLong("triggerAtMillis", 0L),
+                    status           = TaskStatus.valueOf(o.optString("status", "PENDING")),
+                    createdAtMillis  = o.optLong("createdAtMillis", System.currentTimeMillis()),
+                    sentAtMillis     = o.optLong("sentAtMillis", 0L),
+                    errorReason      = o.optString("errorReason"),
+                    retryCount       = o.optInt("retryCount", 0),
                 )
             }
         } catch (e: Exception) { emptyList() }

@@ -156,29 +156,38 @@ class MainActivity : ComponentActivity() {
             val o = JSONObject(json)
             val daysArr = o.optJSONArray("days")
             val days = (0 until (daysArr?.length() ?: 0)).map { daysArr!!.getInt(it) }
-            val task = ScheduledTask(
-                id          = o.getString("id"),
-                label       = o.getString("label"),
-                type        = when(o.getString("type")) {
-                    "SMS"    -> TaskType.SMS
-                    "WA_MSG" -> TaskType.WHATSAPP_MESSAGE
-                    "WA_LOC" -> TaskType.WHATSAPP_LOCATION
-                    else     -> TaskType.SMS
-                },
-                isEnabled    = true,
-                contactName  = o.optString("contactName"),
-                phoneNumber  = o.optString("phone"),
-                messageBody  = o.optString("message"),
-                hourOfDay    = o.optInt("hour", 8),
-                minute       = o.optInt("minute", 0),
-                repeatMode   = when(o.optString("repeat")) {
-                    "DAILY"  -> RepeatMode.DAILY
-                    "WEEKLY" -> RepeatMode.WEEKLY
-                    else     -> RepeatMode.NONE
-                },
-                daysOfWeek   = days,
-            )
             scope.launch {
+                // אם זו עריכת משימה קיימת, שמר את הסטטוס וההיסטוריה הקיימים
+                val existing = repo.tasksFlow.firstValue().find { it.id == o.optString("id") }
+                val task = ScheduledTask(
+                    id               = o.getString("id"),
+                    label            = o.getString("label"),
+                    type             = when(o.getString("type")) {
+                        "SMS"    -> TaskType.SMS
+                        "WA_MSG" -> TaskType.WHATSAPP_MESSAGE
+                        "WA_LOC" -> TaskType.WHATSAPP_LOCATION
+                        else     -> TaskType.SMS
+                    },
+                    isEnabled        = true,
+                    contactName      = o.optString("contactName"),
+                    phoneNumber      = o.optString("phone"),
+                    messageBody      = o.optString("message"),
+                    hourOfDay        = o.optInt("hour", 8),
+                    minute           = o.optInt("minute", 0),
+                    targetDateMillis = o.optLong("targetDateMillis", 0L),
+                    repeatMode       = when(o.optString("repeat")) {
+                        "DAILY"  -> RepeatMode.DAILY
+                        "WEEKLY" -> RepeatMode.WEEKLY
+                        else     -> RepeatMode.NONE
+                    },
+                    daysOfWeek       = days,
+                    // שמירת היסטוריית סטטוס בעריכה; משימה חדשה מתחילה כ-PENDING
+                    status           = existing?.status ?: com.shimon.shortcutmaker.data.TaskStatus.PENDING,
+                    createdAtMillis  = existing?.createdAtMillis ?: System.currentTimeMillis(),
+                    sentAtMillis     = existing?.sentAtMillis ?: 0L,
+                    errorReason      = "",
+                    retryCount       = existing?.retryCount ?: 0,
+                )
                 repo.saveTask(task)
                 if (task.isEnabled) SchedulerReceiver.scheduleTask(this@MainActivity, task)
             }
@@ -274,12 +283,18 @@ class MainActivity : ComponentActivity() {
         })
         put("phone", phoneNumber); put("contactName", contactName)
         put("message", messageBody); put("hour", hourOfDay); put("minute", minute)
+        put("targetDateMillis", targetDateMillis)
         put("repeat", when(repeatMode) {
             RepeatMode.NONE   -> "NONE"
             RepeatMode.DAILY  -> "DAILY"
             RepeatMode.WEEKLY -> "WEEKLY"
         })
         put("days", JSONArray(daysOfWeek))
+        put("status", status.name)
+        put("createdAtMillis", createdAtMillis)
+        put("sentAtMillis", sentAtMillis)
+        put("errorReason", errorReason)
+        put("retryCount", retryCount)
     }.toString()
 
     override fun onBackPressed() {

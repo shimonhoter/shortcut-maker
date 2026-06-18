@@ -52,6 +52,12 @@ enum class RepeatMode {
     WEEKLY,     // Selected days of week
 }
 
+enum class TaskStatus {
+    PENDING,    // ממתין לזמן היעד
+    SENT,       // נשלח בהצלחה
+    FAILED,     // נכשל
+}
+
 @Parcelize
 data class ScheduledTask(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -70,12 +76,23 @@ data class ScheduledTask(
     val hourOfDay: Int = 8,
     val minute: Int = 0,
 
+    // Full target date (epoch day, for one-time scheduling with specific date)
+    // 0 = use "today/next occurrence" logic (legacy behavior)
+    val targetDateMillis: Long = 0L,
+
     // Recurrence
     val repeatMode: RepeatMode = RepeatMode.NONE,
     val daysOfWeek: List<Int> = emptyList(), // 1=Sun … 7=Sat (Calendar constants)
 
     // One-time: epoch millis of next trigger
     val triggerAtMillis: Long = 0L,
+
+    // ── Task queue tracking (per spec section 2.1) ──────────────────────────
+    val status: TaskStatus = TaskStatus.PENDING,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val sentAtMillis: Long = 0L,
+    val errorReason: String = "",
+    val retryCount: Int = 0,
 ) : Parcelable
 
 // ─── Day-of-week helper ──────────────────────────────────────────────────────

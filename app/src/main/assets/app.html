@@ -276,7 +276,17 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
       </div>
       <div class="field" id="task-msg-field">
         <label>תוכן ההודעה</label>
-        <textarea id="task-msg" placeholder="הכנס הודעה..."></textarea>
+        <textarea id="task-msg" placeholder="הכנס הודעה..." oninput="updateCharCounter()"></textarea>
+        <div id="task-char-counter" style="font-size:11px;color:var(--muted);text-align:left;margin-top:4px">0 תווים · 1 SMS</div>
+      </div>
+      <div class="field">
+        <label>תאריך שליחה (לפעם אחת)</label>
+        <div class="picker-field" onclick="openDatePicker()">
+          <span class="pf-icon">📅</span>
+          <span class="pf-val placeholder" id="task-date-display">היום</span>
+          <span class="pf-arrow">›</span>
+        </div>
+        <input type="hidden" id="task-target-date" value="0"/>
       </div>
       <div class="field">
         <label>שעת שליחה</label>
@@ -377,6 +387,31 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
   </div>
 </div>
 
+<!-- ══════════════ DATE PICKER MODAL ══════════════ -->
+<div class="modal-overlay" id="modal-date">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">בחר תאריך</span>
+      <button class="modal-close" onclick="closeModal('modal-date')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pills" style="margin-bottom:14px">
+        <div class="pill selected" onclick="quickDate(0,this)">היום</div>
+        <div class="pill" onclick="quickDate(1,this)">מחר</div>
+        <div class="pill" onclick="quickDate(7,this)">בעוד שבוע</div>
+      </div>
+      <div class="field">
+        <label>או בחר תאריך מדויק (עד חצי שנה קדימה)</label>
+        <input type="date" id="dp-native" onchange="onNativeDateChange()"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-date')">ביטול</button>
+      <button class="btn btn-primary" onclick="confirmDate()">אישור</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════
 // STATE
@@ -452,12 +487,17 @@ function renderShortcuts() {
 function renderTasks() {
   var el = document.getElementById('list-tasks');
   if (!tasks.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">⏰</div><div>אין משימות מתוזמנות</div><div style="font-size:12px;margin-top:6px">לחץ + להוספה</div></div>'; return; }
-  el.innerHTML = tasks.map(t => `
+  // מיון: משימות שנכשלו קודם, אז ממתינות, אז נשלחו (לוח בקרה - סעיף 5)
+  var statusOrder = {FAILED:0, PENDING:1, SENT:2};
+  var sorted = [...tasks].sort((a,b)=>(statusOrder[a.status]??1)-(statusOrder[b.status]??1));
+  el.innerHTML = sorted.map(t => `
     <div class="card" style="opacity:${t.enabled?1:.5}">
       <div class="card-icon">${taskIcons[t.type]||'⏰'}</div>
       <div class="card-body">
-        <div class="card-title">${t.label}</div>
+        <div class="card-title">${t.label} ${statusBadge(t.status)}</div>
         <div class="card-sub">${t.contactName} | ${pad(t.hour)}:${pad(t.minute)} | ${repeatLabel(t.repeat)}</div>
+        ${t.status==='FAILED' && t.errorReason ? `<div style="font-size:11px;color:var(--error);margin-top:3px">⚠ ${t.errorReason}</div>` : ''}
+        ${t.status==='SENT' && t.sentAtMillis ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">נשלח: ${new Date(t.sentAtMillis).toLocaleString('he-IL')}</div>` : ''}
       </div>
       <div class="card-actions">
         <div class="switch ${t.enabled?'on':''}" onclick="toggleTask('${t.id}')"></div>
@@ -465,6 +505,15 @@ function renderTasks() {
         <button class="icon-btn" onclick="deleteTask('${t.id}')">🗑️</button>
       </div>
     </div>`).join('');
+}
+
+function statusBadge(status) {
+  var map = {
+    PENDING: '<span style="font-size:10px;background:#3a4a5a;color:#8899AA;padding:2px 8px;border-radius:10px;margin-right:6px">ממתין</span>',
+    SENT:    '<span style="font-size:10px;background:rgba(77,208,225,.15);color:#4DD0E1;padding:2px 8px;border-radius:10px;margin-right:6px">נשלח ✓</span>',
+    FAILED:  '<span style="font-size:10px;background:rgba(239,83,80,.15);color:#EF5350;padding:2px 8px;border-radius:10px;margin-right:6px">נכשל ✕</span>',
+  };
+  return map[status] || '';
 }
 
 function scSubtitle(sc) {
@@ -564,6 +613,17 @@ function openTaskModal(t) {
   document.getElementById('task-contact-display').textContent = t&&t.contactName ? t.contactName+' ('+t.phone+')' : 'בחר איש קשר';
   document.getElementById('task-contact-display').className = 'pf-val'+(t&&t.contactName?'':' placeholder');
   document.getElementById('task-msg').value = t ? t.message||'' : '';
+  updateCharCounter();
+  var targetDate = t && t.targetDateMillis ? t.targetDateMillis : 0;
+  document.getElementById('task-target-date').value = targetDate;
+  var dateDisp = document.getElementById('task-date-display');
+  if (targetDate) {
+    dateDisp.textContent = new Date(targetDate).toLocaleDateString('he-IL', {day:'numeric', month:'numeric', year:'numeric'});
+    dateDisp.className = 'pf-val';
+  } else {
+    dateDisp.textContent = 'היום';
+    dateDisp.className = 'pf-val';
+  }
   tpHour = t ? t.hour : 8; tpMin = t ? t.minute : 0;
   document.getElementById('task-time-display').textContent = pad(tpHour)+':'+pad(tpMin);
   document.getElementById('task-hour').value = tpHour;
@@ -602,6 +662,7 @@ function saveTask() {
     message:     document.getElementById('task-msg').value,
     hour:        parseInt(document.getElementById('task-hour').value),
     minute:      parseInt(document.getElementById('task-minute').value),
+    targetDateMillis: parseInt(document.getElementById('task-target-date').value) || 0,
     repeat, days,
   };
   if (!t.label) { alert('יש להזין שם'); return; }
@@ -690,6 +751,71 @@ function selectApp(name, pkg) {
 // ══════════════════════════════════════════════════════
 // TIME PICKER
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// CHARACTER COUNTER (spec 2.2 - dynamic char counter + SMS segment indicator)
+// ══════════════════════════════════════════════════════
+function updateCharCounter() {
+  var text = document.getElementById('task-msg').value;
+  var len = text.length;
+  // עברית: 70 תווים להודעה בודדת, אנגלית: 160 (לפי האפיון)
+  var isHebrew = /[\u0590-\u05FF]/.test(text);
+  var limit = isHebrew ? 70 : 160;
+  var segments = Math.max(1, Math.ceil(len / limit));
+  safeSetText('task-char-counter', len + ' תווים · ' + segments + ' SMS' + (segments>1?' (משורשר)':''));
+}
+
+// ══════════════════════════════════════════════════════
+// DATE PICKER (spec 2.2 - Date & Time Picker, max 6 months ahead)
+// ══════════════════════════════════════════════════════
+var dpSelectedMillis = 0;
+
+function openDatePicker() {
+  var nativeInput = document.getElementById('dp-native');
+  var today = new Date();
+  var maxDate = new Date();
+  maxDate.setMonth(maxDate.getMonth() + 6);
+  nativeInput.min = today.toISOString().split('T')[0];
+  nativeInput.max = maxDate.toISOString().split('T')[0];
+  nativeInput.value = '';
+  document.querySelectorAll('#modal-date .pill').forEach((p,i)=>p.classList.toggle('selected', i===0));
+  dpSelectedMillis = startOfDay(today).getTime();
+  openModal('modal-date');
+}
+
+function startOfDay(d) {
+  var nd = new Date(d);
+  nd.setHours(0,0,0,0);
+  return nd;
+}
+
+function quickDate(daysFromNow, el) {
+  document.querySelectorAll('#modal-date .pill').forEach(p=>p.classList.remove('selected'));
+  el.classList.add('selected');
+  var d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  dpSelectedMillis = startOfDay(d).getTime();
+  document.getElementById('dp-native').value = '';
+}
+
+function onNativeDateChange() {
+  document.querySelectorAll('#modal-date .pill').forEach(p=>p.classList.remove('selected'));
+  var val = document.getElementById('dp-native').value;
+  if (val) dpSelectedMillis = startOfDay(new Date(val)).getTime();
+}
+
+function confirmDate() {
+  document.getElementById('task-target-date').value = dpSelectedMillis;
+  var d = new Date(dpSelectedMillis);
+  var today = startOfDay(new Date()).getTime();
+  var label;
+  if (dpSelectedMillis === today) label = 'היום';
+  else label = d.toLocaleDateString('he-IL', {day:'numeric', month:'numeric', year:'numeric'});
+  var disp = document.getElementById('task-date-display');
+  disp.textContent = label;
+  disp.className = 'pf-val';
+  closeModal('modal-date');
+}
+
 function openTimePicker() {
   tpHour = parseInt(document.getElementById('task-hour').value)||8;
   tpMin  = parseInt(document.getElementById('task-minute').value)||0;
