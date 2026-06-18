@@ -134,6 +134,7 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
 <div id="screen-main" class="screen active">
   <div class="topbar">
     <h1>⚡ ShortcutMaker</h1>
+    <button class="icon-btn" onclick="showDebugInfo()" style="font-size:18px" title="מידע דיבאג">🛈</button>
   </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('shortcuts')">⚡ קיצורי דרך</div>
@@ -366,7 +367,7 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
       <button class="modal-close" onclick="closeModal('modal-time')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="time-row">
+      <div class="time-row" dir="ltr">
         <div class="time-spinner">
           <button class="time-btn" onclick="changeTime('hour',1)">▲</button>
           <div class="time-val" id="tp-hour">08</div>
@@ -374,9 +375,9 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
         </div>
         <div class="time-sep">:</div>
         <div class="time-spinner">
-          <button class="time-btn" onclick="changeTime('min',5)">▲</button>
+          <button class="time-btn" onclick="changeTime('min',1)">▲</button>
           <div class="time-val" id="tp-min">00</div>
-          <button class="time-btn" onclick="changeTime('min',-5)">▼</button>
+          <button class="time-btn" onclick="changeTime('min',-1)">▼</button>
         </div>
       </div>
     </div>
@@ -434,6 +435,26 @@ var tpHour = 8, tpMin = 0;
 function callAndroid(method, data) {
   try { Android[method](JSON.stringify(data)); } catch(e) {}
 }
+function showDebugInfo() {
+  try {
+    var raw = Android.debugInfo();
+    var d = JSON.parse(raw);
+    var msg =
+      'גרסת אנדרואיד API: ' + d.androidVersion + '\n' +
+      'הרשאת תזכורות מדויקות: ' + (d.exactAlarmPermission ? '✓ קיימת' : '✕ חסרה!') + '\n' +
+      'פטור מאופטימיזציית סוללה: ' + (d.batteryOptimizationIgnored ? '✓ כן' : '✕ לא - יכול לחסום משימות') + '\n' +
+      'זמן נוכחי במכשיר: ' + d.currentTimeReadable + '\n' +
+      '— משימות —\n' +
+      'סה"כ: ' + d.tasksCount + '\n' +
+      'ממתינות: ' + d.pendingTasksCount + '\n' +
+      'נשלחו: ' + d.sentTasksCount + '\n' +
+      'נכשלו: ' + d.failedTasksCount;
+    alert(msg);
+  } catch(e) {
+    alert('שגיאה בקבלת מידע דיבאג: ' + e.message);
+  }
+}
+
 function loadData() {
   try {
     var d = Android.getData();

@@ -210,7 +210,21 @@ class MainActivity : ComponentActivity() {
                     retryCount       = existing?.retryCount ?: 0,
                 )
                 repo.saveTask(task)
-                if (task.isEnabled) SchedulerReceiver.scheduleTask(this@MainActivity, task)
+                if (task.isEnabled) {
+                    val scheduledAt = SchedulerReceiver.scheduleTask(this@MainActivity, task)
+                    runOnUiThread {
+                        if (scheduledAt > 0) {
+                            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale("he"))
+                            Toast.makeText(this@MainActivity,
+                                "המשימה תוזמנה ל-${sdf.format(java.util.Date(scheduledAt))}",
+                                Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(this@MainActivity,
+                                "שגיאה בתזמון - בדוק הרשאת 'תזכורות והתראות' בהגדרות המערכת",
+                                Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
             }
         }
 
@@ -230,6 +244,32 @@ class MainActivity : ComponentActivity() {
                 repo.saveTask(updated)
                 if (enabled) SchedulerReceiver.scheduleTask(this@MainActivity, updated)
                 else SchedulerReceiver.cancelTask(this@MainActivity, updated)
+            }
+        }
+
+        @JavascriptInterface
+        fun debugInfo(): String {
+            val alarmManager = getSystemService(AlarmManager::class.java)
+            val exactAllowed = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
+                alarmManager?.canScheduleExactAlarms() ?: false
+            else true // לפני Android 12 ההרשאה ניתנת אוטומטית
+
+            val powerManager = getSystemService(android.os.PowerManager::class.java)
+            val batteryOptIgnored = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
+
+            return runBlocking {
+                val tasks = repo.tasksFlow.firstValue()
+                JSONObject().apply {
+                    put("androidVersion", android.os.Build.VERSION.SDK_INT)
+                    put("exactAlarmPermission", exactAllowed)
+                    put("batteryOptimizationIgnored", batteryOptIgnored)
+                    put("currentTimeMillis", System.currentTimeMillis())
+                    put("currentTimeReadable", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale("he")).format(java.util.Date()))
+                    put("tasksCount", tasks.size)
+                    put("pendingTasksCount", tasks.count { it.status == com.shimon.shortcutmaker.data.TaskStatus.PENDING })
+                    put("sentTasksCount", tasks.count { it.status == com.shimon.shortcutmaker.data.TaskStatus.SENT })
+                    put("failedTasksCount", tasks.count { it.status == com.shimon.shortcutmaker.data.TaskStatus.FAILED })
+                }.toString()
             }
         }
     }

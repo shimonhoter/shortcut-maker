@@ -29,24 +29,29 @@ class SchedulerReceiver : BroadcastReceiver() {
         /**
          * Schedule or reschedule a task using AlarmManager.
          */
-        fun scheduleTask(context: Context, task: ScheduledTask) {
+        /**
+         * Schedule or reschedule a task using AlarmManager.
+         * Returns the actual epoch millis the task was scheduled for, or -1 on failure.
+         */
+        fun scheduleTask(context: Context, task: ScheduledTask): Long {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val pi = pendingIntentForTask(context, task)
 
-            val triggerMillis = when (task.repeatMode) {
+            var triggerMillis = when (task.repeatMode) {
                 RepeatMode.NONE ->
                     // Prefer explicit date+time picker value if set (spec 2.2 Date & Time Picker),
-                    // fall back to legacy triggerAtMillis / hour+minute logic.
-                    if (task.targetDateMillis > 0) {
-                        Calendar.getInstance().apply {
+                    // fall back to legacy triggerAtMillis, then to a safe "today at chosen time" default
+                    // instead of silently failing with 0.
+                    when {
+                        task.targetDateMillis > 0 -> Calendar.getInstance().apply {
                             timeInMillis = task.targetDateMillis
                             set(Calendar.HOUR_OF_DAY, task.hourOfDay)
                             set(Calendar.MINUTE, task.minute)
                             set(Calendar.SECOND, 0)
                             set(Calendar.MILLISECOND, 0)
                         }.timeInMillis
-                    } else {
-                        task.triggerAtMillis
+                        task.triggerAtMillis > 0 -> task.triggerAtMillis
+                        else -> nextOccurrenceMillis(task.hourOfDay, task.minute, listOf())
                     }
 
                 RepeatMode.DAILY -> nextOccurrenceMillis(task.hourOfDay, task.minute, listOf())
@@ -56,20 +61,39 @@ class SchedulerReceiver : BroadcastReceiver() {
                 )
             }
 
-            if (triggerMillis <= 0) {
-                Log.w(TAG, "Invalid trigger time for task ${task.id}")
-                return
+            // הגנה קריטית: אם המשתמש בחר "היום" בשעה שכבר עברה (או עברה בין הבחירה לשמירה),
+            // הזמן המחושב נמצא בעבר. ל-RepeatMode.NONE בלבד נדחוף ליום הבא במקום לכשול בשקט.
+            if (task.repeatMode == RepeatMode.NONE && triggerMillis <= System.currentTimeMillis()) {
+                Log.w(TAG, "Computed trigger time is in the past (${triggerMillis}); pushing to tomorrow")
+                triggerMillis += 24L * 60 * 60 * 1000
             }
 
-            try {
+            if (triggerMillis <= 0) {
+                Log.w(TAG, "Invalid trigger time for task ${task.id}")
+                return -1L
+            }
+
+            // Android 12+ (API 31+) requires explicit user grant for exact alarms.
+            // If not granted, setExactAndAllowWhileIdle throws SecurityException silently.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (!alarmManager.canScheduleExactAlarms()) {
+                    Log.e(TAG, "Exact alarm permission NOT granted - task ${task.label} will NOT fire. " +
+                            "User must enable 'Alarms & reminders' for this app in system settings.")
+                    return -1L
+                }
+            }
+
+            return try {
                 alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
                     triggerMillis,
                     pi
                 )
-                Log.d(TAG, "Scheduled task ${task.label} at $triggerMillis")
+                Log.d(TAG, "Scheduled task ${task.label} at $triggerMillis (now=${System.currentTimeMillis()})")
+                triggerMillis
             } catch (e: SecurityException) {
                 Log.e(TAG, "Need SCHEDULE_EXACT_ALARM permission: ${e.message}")
+                -1L
             }
         }
 
@@ -131,41 +155,54 @@ class SchedulerReceiver : BroadcastReceiver() {
         val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: return
         Log.d(TAG, "Alarm fired for task id=$taskId")
 
+        // קריטי: onReceive הוא סינכרוני. בלי goAsync(), המערכת יכולה להרוג את
+        // התהליך מיידית אחרי שהפונקציה חוזרת - לפני שהקורוטינה האסינכרונית
+        // (שליחת ה-SMS עצמו!) מספיקה לרוץ. זו הייתה הסיבה שה-SMS לא נשלח
+        // בפועל אפילו כשה-Alarm נורה בהצלחה.
+        val pendingResult = goAsync()
+
         val repo = AppRepository(context)
         val scope = CoroutineScope(Dispatchers.IO)
 
         scope.launch {
-            val tasks = repo.getAllTasks()
-            val task  = tasks.find { it.id == taskId } ?: run {
-                Log.w(TAG, "Task $taskId not found"); return@launch
-            }
-            if (!task.isEnabled) return@launch
-
-            val result = executeTask(context, task)
-
-            // Update status per spec 2.1: Pending -> Sent / Failed
-            val updated = if (result.isSuccess) {
-                task.copy(
-                    status = com.shimon.shortcutmaker.data.TaskStatus.SENT,
-                    sentAtMillis = System.currentTimeMillis(),
-                    errorReason = "",
-                )
-            } else {
-                task.copy(
-                    status = com.shimon.shortcutmaker.data.TaskStatus.FAILED,
-                    errorReason = result.exceptionOrNull()?.message ?: "שגיאה לא ידועה",
-                    retryCount = task.retryCount + 1,
-                )
-            }
-            repo.saveTask(updated)
-
-            // Reschedule if repeating — reset to PENDING for the next occurrence
-            when (task.repeatMode) {
-                RepeatMode.DAILY, RepeatMode.WEEKLY -> {
-                    repo.saveTask(updated.copy(status = com.shimon.shortcutmaker.data.TaskStatus.PENDING))
-                    scheduleTask(context, task)
+            try {
+                val tasks = repo.getAllTasks()
+                val task  = tasks.find { it.id == taskId } ?: run {
+                    Log.w(TAG, "Task $taskId not found"); return@launch
                 }
-                RepeatMode.NONE -> { /* one-shot, nothing to do */ }
+                if (!task.isEnabled) return@launch
+
+                val result = executeTask(context, task)
+
+                // Update status per spec 2.1: Pending -> Sent / Failed
+                val updated = if (result.isSuccess) {
+                    task.copy(
+                        status = com.shimon.shortcutmaker.data.TaskStatus.SENT,
+                        sentAtMillis = System.currentTimeMillis(),
+                        errorReason = "",
+                    )
+                } else {
+                    task.copy(
+                        status = com.shimon.shortcutmaker.data.TaskStatus.FAILED,
+                        errorReason = result.exceptionOrNull()?.message ?: "שגיאה לא ידועה",
+                        retryCount = task.retryCount + 1,
+                    )
+                }
+                repo.saveTask(updated)
+
+                // Reschedule if repeating — reset to PENDING for the next occurrence
+                when (task.repeatMode) {
+                    RepeatMode.DAILY, RepeatMode.WEEKLY -> {
+                        repo.saveTask(updated.copy(status = com.shimon.shortcutmaker.data.TaskStatus.PENDING))
+                        scheduleTask(context, task)
+                    }
+                    RepeatMode.NONE -> { /* one-shot, nothing to do */ }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error executing scheduled task: ${e.message}", e)
+            } finally {
+                // חובה לשחרר - בלי זה ה-wakelock נשאר תפוס וה-OS עלול להעניש את האפליקציה
+                pendingResult.finish()
             }
         }
     }
