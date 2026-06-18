@@ -653,6 +653,9 @@ function saveTask() {
   var type   = document.querySelector('#task-type-pills .pill.selected').dataset.val;
   var repeat = document.querySelector('#task-repeat-pills .pill.selected').dataset.val;
   var days   = [...document.querySelectorAll('.day.on')].map(d=>parseInt(d.dataset.day));
+  // אם המשתמש לא פתח את בורר התאריך, ברירת המחדל היא "היום" - לא 0!
+  var rawDate = parseInt(document.getElementById('task-target-date').value) || 0;
+  var finalDate = rawDate > 0 ? rawDate : startOfDay(new Date()).getTime();
   var t = {
     id: editingId || Date.now().toString(),
     type, enabled: true,
@@ -662,7 +665,7 @@ function saveTask() {
     message:     document.getElementById('task-msg').value,
     hour:        parseInt(document.getElementById('task-hour').value),
     minute:      parseInt(document.getElementById('task-minute').value),
-    targetDateMillis: parseInt(document.getElementById('task-target-date').value) || 0,
+    targetDateMillis: finalDate,
     repeat, days,
   };
   if (!t.label) { alert('יש להזין שם'); return; }

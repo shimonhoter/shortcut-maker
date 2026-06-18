@@ -1,6 +1,7 @@
 package com.shimon.shortcutmaker
 
 import android.Manifest
+import android.app.AlarmManager
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -65,6 +66,26 @@ class MainActivity : ComponentActivity() {
 
         setContentView(webView)
         requestAllPermissions()
+        checkExactAlarmPermission()
+    }
+
+    private fun checkExactAlarmPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(AlarmManager::class.java) ?: return
+            if (!alarmManager.canScheduleExactAlarms()) {
+                Toast.makeText(this,
+                    "יש לאשר הרשאת 'תזכורות והתראות' כדי שמשימות מתוזמנות יישלחו",
+                    Toast.LENGTH_LONG).show()
+                try {
+                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "Could not open exact alarm settings: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun requestAllPermissions() {
