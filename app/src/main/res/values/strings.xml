@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ShortcutMaker</string>
+    <string name="accessibility_service_description">משמש לשליחה אוטומטית של הודעות WhatsApp מתוזמנות - לוחץ על כפתור השליחה לאחר שההודעה נכתבה אוטומטית בתיבת הטקסט.</string>
 </resources>
+

@@ -443,6 +443,7 @@ function showDebugInfo() {
       'גרסת אנדרואיד API: ' + d.androidVersion + '\n' +
       'הרשאת תזכורות מדויקות: ' + (d.exactAlarmPermission ? '✓ קיימת' : '✕ חסרה!') + '\n' +
       'פטור מאופטימיזציית סוללה: ' + (d.batteryOptimizationIgnored ? '✓ כן' : '✕ לא - יכול לחסום משימות') + '\n' +
+      'נגישות לשליחה אוטומטית ב-WhatsApp: ' + (d.whatsappAccessibilityEnabled ? '✓ מופעלת' : '✕ לא מופעלת - WhatsApp מתוזמן לא יישלח') + '\n' +
       'זמן נוכחי במכשיר: ' + d.currentTimeReadable + '\n' +
       '— משימות —\n' +
       'סה"כ: ' + d.tasksCount + '\n' +
@@ -450,6 +451,11 @@ function showDebugInfo() {
       'נשלחו: ' + d.sentTasksCount + '\n' +
       'נכשלו: ' + d.failedTasksCount;
     alert(msg);
+    if (!d.whatsappAccessibilityEnabled) {
+      if (confirm('האם לפתוח כעת את הגדרות הנגישות כדי להפעיל שליחה אוטומטית ל-WhatsApp?')) {
+        Android.openAccessibilitySettings();
+      }
+    }
   } catch(e) {
     alert('שגיאה בקבלת מידע דיבאג: ' + e.message);
   }

@@ -14,6 +14,7 @@ import com.shimon.shortcutmaker.data.RepeatMode
 import com.shimon.shortcutmaker.data.ScheduledTask
 import com.shimon.shortcutmaker.data.TaskType
 import com.shimon.shortcutmaker.service.LocationSharingService
+import com.shimon.shortcutmaker.service.WhatsAppAccessibilityService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -209,10 +210,10 @@ class SchedulerReceiver : BroadcastReceiver() {
 
     // ─── Execution ────────────────────────────────────────────────────────────
 
-    private fun executeTask(context: Context, task: ScheduledTask): Result<Unit> {
+    private suspend fun executeTask(context: Context, task: ScheduledTask): Result<Unit> {
         return when (task.type) {
             TaskType.SMS               -> sendSms(context, task)
-            TaskType.WHATSAPP_MESSAGE  -> openWhatsApp(context, task)
+            TaskType.WHATSAPP_MESSAGE  -> sendWhatsAppAutomatically(context, task)
             TaskType.WHATSAPP_LOCATION -> startLocationService(context, task)
         }
     }
@@ -237,7 +238,19 @@ class SchedulerReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun openWhatsApp(context: Context, task: ScheduledTask): Result<Unit> {
+    /**
+     * שולח הודעת WhatsApp באופן מלא ואוטומטי, ללא מעורבות אנושית:
+     * 1. בודק שה-Accessibility Service פעיל (אחרת אין דרך ללחוץ "שלח" אוטומטית)
+     * 2. פותח את WhatsApp עם ההודעה ממולאת מראש בתיבת הטקסט (deep-link wa.me)
+     * 3. ה-WhatsAppAccessibilityService מאתר את כפתור השליחה ולוחץ עליו
+     * 4. הפונקציה הזו ממתינה (suspend) לתוצאה האמיתית מהשירות, ולא רק לפתיחת המסך
+     */
+    private suspend fun sendWhatsAppAutomatically(context: Context, task: ScheduledTask): Result<Unit> {
+        if (!isAccessibilityServiceEnabled(context)) {
+            Log.e(TAG, "WhatsApp accessibility service not enabled - cannot auto-send")
+            return Result.failure(Exception("שירות הנגישות לשליחה אוטומטית אינו מופעל בהגדרות המערכת"))
+        }
+
         return try {
             val phone = task.phoneNumber.trimStart('+').replace(" ", "").replace("-", "")
             val encodedMsg = java.net.URLEncoder.encode(task.messageBody, "UTF-8")
@@ -246,11 +259,35 @@ class SchedulerReceiver : BroadcastReceiver() {
                 setPackage("com.whatsapp")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(intent)
-            Result.success(Unit)
+
+            val sendSucceeded = kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { cont ->
+                WhatsAppAccessibilityService.armAutoSend { success ->
+                    if (cont.isActive) cont.resume(success) {}
+                }
+                context.startActivity(intent)
+            }
+
+            if (sendSucceeded) {
+                Log.d(TAG, "WhatsApp message auto-sent to ${task.phoneNumber}")
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("לא הצלחנו ללחוץ אוטומטית על כפתור השליחה ב-WhatsApp"))
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "WhatsApp not installed: ${e.message}")
+            Log.e(TAG, "WhatsApp auto-send failed: ${e.message}")
             Result.failure(e)
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val expectedServiceName = "${context.packageName}/.service.WhatsAppAccessibilityService"
+        val enabledServices = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.split(':').any {
+            it.equals(expectedServiceName, ignoreCase = true) ||
+            it.equals("${context.packageName}/com.shimon.shortcutmaker.service.WhatsAppAccessibilityService", ignoreCase = true)
         }
     }
 

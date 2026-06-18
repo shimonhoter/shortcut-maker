@@ -257,12 +257,24 @@ class MainActivity : ComponentActivity() {
             val powerManager = getSystemService(android.os.PowerManager::class.java)
             val batteryOptIgnored = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
 
+            val a11yEnabled = run {
+                val expected = "$packageName/.service.WhatsAppAccessibilityService"
+                val enabled = android.provider.Settings.Secure.getString(
+                    contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: ""
+                enabled.split(':').any {
+                    it.equals(expected, ignoreCase = true) ||
+                    it.equals("$packageName/com.shimon.shortcutmaker.service.WhatsAppAccessibilityService", ignoreCase = true)
+                }
+            }
+
             return runBlocking {
                 val tasks = repo.tasksFlow.firstValue()
                 JSONObject().apply {
                     put("androidVersion", android.os.Build.VERSION.SDK_INT)
                     put("exactAlarmPermission", exactAllowed)
                     put("batteryOptimizationIgnored", batteryOptIgnored)
+                    put("whatsappAccessibilityEnabled", a11yEnabled)
                     put("currentTimeMillis", System.currentTimeMillis())
                     put("currentTimeReadable", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale("he")).format(java.util.Date()))
                     put("tasksCount", tasks.size)
@@ -270,6 +282,17 @@ class MainActivity : ComponentActivity() {
                     put("sentTasksCount", tasks.count { it.status == com.shimon.shortcutmaker.data.TaskStatus.SENT })
                     put("failedTasksCount", tasks.count { it.status == com.shimon.shortcutmaker.data.TaskStatus.FAILED })
                 }.toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun openAccessibilitySettings() {
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Could not open accessibility settings: ${e.message}")
             }
         }
     }
