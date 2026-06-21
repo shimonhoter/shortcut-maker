@@ -31,6 +31,11 @@ gradle/wrapper/gradle-wrapper.jar
 keystore.properties
 release.properties
 
+# חריג מכוון: ה-debug keystore חייב להיות ב-repo כדי שכל
+# build ב-CI יחתום עם אותו מפתח קבוע (אחרת כל build מקבל
+# מפתח אקראי חדש וגורם לכשל "בעיה בניתוח החבילה" בהתקנה)
+!keystore/debug.keystore
+
 # ── Generated APKs / AABs ────────────────────────────────────
 *.apk
 *.aab
