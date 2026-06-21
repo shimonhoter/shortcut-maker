@@ -21,6 +21,15 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("../keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -31,6 +40,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -90,9 +100,6 @@ dependencies {
 
     // Shortcuts compat
     implementation("androidx.core:core-google-shortcuts:1.1.0")
-
-    // Permissions
-    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
 
     // Debug tools
     debugImplementation("androidx.compose.ui:ui-tooling")
